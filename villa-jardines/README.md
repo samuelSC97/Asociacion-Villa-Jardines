@@ -1,66 +1,71 @@
 # Villa Jardines — Sistema de Gestión
-**Asociación de Vecinos**
+> Asociación de Vecinos · Arequipa, Perú  
+> © 2025 **Sasa** · Arnold Samuel Sucasaire Cueva · Cel. 989234106
+
+---
 
 ## Estructura del proyecto
 ```
 villa-jardines/
-├── index.html              ← Página principal
+├── index.html
 ├── css/
-│   ├── main.css            ← Estilos globales y componentes
-│   ├── admin.css           ← Estilos específicos admin
-│   └── vecino.css          ← Estilos específicos vecino
+│   └── main.css
 ├── js/
-│   ├── supabase.js         ← Config de base de datos y utilidades
-│   ├── auth.js             ← Login / logout
-│   ├── app.js              ← Inicialización
+│   ├── config.js          ← Conexión Supabase
+│   ├── utils.js           ← Funciones auxiliares
+│   ├── modal.js           ← Confirmación con contraseña
+│   ├── auth.js            ← Login / logout
+│   ├── app.js             ← Inicialización
 │   ├── admin/
-│   │   ├── index.js        ← Controlador admin
-│   │   ├── inicio.js       ← Dashboard inicial
-│   │   ├── asistencia.js   ← Tomar asistencia + cobro S/2
-│   │   ├── vecinos.js      ← Gestión de vecinos
-│   │   ├── pagos.js        ← Cuotas sociales + otros cobros
-│   │   └── documentos.js   ← PDFs y agenda
+│   │   ├── index.js
+│   │   ├── inicio.js
+│   │   ├── asistencia.js  ← Toma asistencia + S/2 almacén + eliminar con contraseña
+│   │   ├── vecinos.js     ← Pago libre, apoyos, guardadito
+│   │   ├── pagos.js       ← Almacén, cuotas sociales, otros cobros
+│   │   └── documentos.js  ← PDFs + agenda próxima
 │   └── vecino/
-│       ├── index.js        ← Controlador vecino
-│       ├── inicio.js       ← Dashboard vecino
-│       ├── faltas.js       ← Historial de asistencia
-│       ├── pagos.js        ← Mis pagos y cuotas
-│       └── documentos.js   ← Ver documentos y agenda
-└── assets/                 ← Imágenes y recursos
+│       ├── index.js
+│       ├── inicio.js      ← Bienvenida, alertas, agenda
+│       ├── faltas.js      ← Historial detallado (sección principal)
+│       ├── pagos.js       ← Almacén, cuota social, otros cobros
+│       └── documentos.js  ← Solo PDFs
+└── assets/
 ```
 
 ## Base de datos (Supabase)
-Proyecto: `villa-jardines`
-URL: `https://qigygiskmpbmpqnggurq.supabase.co`
+**Proyecto:** villa-jardines  
+**URL:** https://qigygiskmpbmpqnggurq.supabase.co
 
 ### Tablas
-- `vecinos` — 77 vecinos con DNI, celular, cargo
-- `eventos` — Asambleas, faenas, eventos importantes
-- `asistencias` — Registro por vecino/evento (P/F/J)
-- `subsanaciones` — Justificaciones vinculadas a apoyos
-- `apoyos` — Guardadito y apoyos aplicados
-- `pagos_cuota_mes` — S/2 mensual
-- `cuotas_sociales` — S/24 anual (pagos parciales)
-- `pagos_luz` — Pagos de luz por periodo
-- `pagos_agua` — Pagos de agua por periodo
-- `otros_pagos` — Cobros personalizados (caravana, etc.)
-- `otros_pagos_vecinos` — Quién pagó cada cobro
-- `documentos` — PDFs subidos (actas, citaciones)
-- `agenda_proxima` — Próxima convocatoria visible
-- `usuarios` — Login de administrador
+| Tabla | Descripción |
+|-------|-------------|
+| `vecinos` | 77 vecinos con DNI, celular, cargo |
+| `eventos` | Asambleas, faenas, eventos importantes |
+| `asistencias` | Registro P/F/J por vecino/evento |
+| `subsanaciones` | Justificaciones vinculadas a apoyos |
+| `apoyos` | Guardadito y apoyos aplicados |
+| `pagos_cuota_mes` | S/2 mensual almacén |
+| `cuotas_sociales` | S/24 anual (pagos parciales) |
+| `otros_pagos` | Cobros personalizados |
+| `otros_pagos_vecinos` | Registro de quién pagó |
+| `documentos` | PDFs subidos (actas, otros) |
+| `agenda_proxima` | Próxima convocatoria |
+| `usuarios` | Login administrador |
 
-## Credenciales por defecto
-- **Usuario admin:** `admin`
-- **Contraseña:** `Admin1234`
-
-## Cómo publicar (Netlify)
-1. Entra a netlify.com
-2. Arrastra la carpeta `villa-jardines` completa
-3. Netlify te da una URL pública gratis
-
-## Multas
+## Multas por tipo
 | Tipo | Monto |
 |------|-------|
-| Asamblea (A) | S/25 |
-| Faena (F) | S/50 |
-| Importante (I) | S/100 |
+| Asamblea | S/25 |
+| Faena | S/50 |
+| Importante | S/100 |
+
+## Publicar en Netlify
+1. Entra a **netlify.com** → cuenta gratis con Google
+2. Arrastra la **carpeta** `villa-jardines` (no el ZIP)
+3. Obtienes una URL pública para compartir con vecinos
+
+## Consideraciones importantes
+- Agregar nuevas tablas en Supabase **no afecta** los datos existentes
+- Para eliminar datos erróneos el sistema pide contraseña de admin
+- Login de vecinos: solo por DNI completo (8 dígitos)
+- Los vecinos solo pueden ver su propia información (solo lectura)
