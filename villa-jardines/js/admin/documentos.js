@@ -11,6 +11,8 @@ const AdminDocumentos = (() => {
 
   function _draw(el, docs, agenda) {
     const a = agenda || {};
+    const ahora = today();
+    const esVisible = !!(a.activa && a.fecha_inicio_mostrar <= ahora && a.fecha_fin_mostrar >= ahora);
     const actas = docs.filter(d => d.categoria === 'acta');
     const otros  = docs.filter(d => d.categoria === 'otro');
 
@@ -31,9 +33,12 @@ const AdminDocumentos = (() => {
           <div class="field"><label>Mostrar desde</label><input type="date" id="ag-ini" value="${a.fecha_inicio_mostrar||today()}"></div>
           <div class="field"><label>Mostrar hasta</label><input type="date" id="ag-fin" value="${a.fecha_fin_mostrar||''}"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <input type="checkbox" id="ag-activa" ${a.activa?'checked':''}>
-          <label for="ag-activa" style="text-transform:none;font-size:13px;font-weight:400;letter-spacing:0;cursor:pointer">Activa (visible para vecinos)</label>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <input type="checkbox" id="ag-activa" style="width:auto" ${a.activa?'checked':''}>
+          <label for="ag-activa" style="text-transform:none;font-size:13px;font-weight:500;letter-spacing:0;cursor:pointer">Activa (visible para vecinos)</label>
+        </div>
+        <div style="font-size:12px;margin-bottom:10px;${esVisible?'color:var(--green)':a.activa?'color:var(--orange)':'color:var(--text3)'}">
+          ${esVisible ? '🟢 Visible para vecinos ahora' : a.activa ? '🟡 Activa pero fuera del rango de fechas' : '⚫ No visible para vecinos'}
         </div>
         <button class="btn btn-dark" onclick="AdminDocumentos.guardarAgenda(${a.id||0})">💾 Guardar agenda</button>
       </div>
@@ -82,22 +87,28 @@ const AdminDocumentos = (() => {
   }
 
   async function guardarAgenda(id) {
+    const activa   = document.getElementById('ag-activa').checked;
+    const fechaIni = document.getElementById('ag-ini').value || (activa ? today() : '');
     const datos = {
-      titulo: document.getElementById('ag-titulo').value.trim(),
-      lugar:  document.getElementById('ag-lugar').value.trim(),
-      hora:   document.getElementById('ag-hora').value.trim(),
-      fecha_evento: document.getElementById('ag-fecha-ev').value,
-      puntos_agenda: document.getElementById('ag-puntos').value.trim(),
-      fecha_inicio_mostrar: document.getElementById('ag-ini').value,
-      fecha_fin_mostrar: document.getElementById('ag-fin').value,
-      activa: document.getElementById('ag-activa').checked
+      titulo:               document.getElementById('ag-titulo').value.trim(),
+      lugar:                document.getElementById('ag-lugar').value.trim(),
+      hora:                 document.getElementById('ag-hora').value.trim(),
+      fecha_evento:         document.getElementById('ag-fecha-ev').value,
+      puntos_agenda:        document.getElementById('ag-puntos').value.trim(),
+      fecha_inicio_mostrar: fechaIni,
+      fecha_fin_mostrar:    document.getElementById('ag-fin').value,
+      activa
     };
-    if (!datos.titulo || !datos.fecha_evento || !datos.fecha_fin_mostrar) { showToast('Completa título, fecha del evento y fecha fin', 'err'); return; }
+    if (!datos.titulo || !datos.fecha_evento || !datos.fecha_fin_mostrar) {
+      showToast('Completa título, fecha del evento y fecha fin', 'err'); return;
+    }
     showLoading();
-    if (id) await db.from('agenda_proxima').update(datos).eq('id', id);
-    else    await db.from('agenda_proxima').insert(datos);
+    const { error } = id
+      ? await db.from('agenda_proxima').update(datos).eq('id', id)
+      : await db.from('agenda_proxima').insert(datos);
     hideLoading();
-    showToast('✓ Agenda guardada');
+    if (error) { showToast('Error al guardar: ' + error.message, 'err'); return; }
+    showToast(activa ? '✓ Agenda guardada y visible para vecinos' : '✓ Agenda guardada (no visible)');
     render();
   }
 

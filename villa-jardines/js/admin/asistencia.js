@@ -1,6 +1,7 @@
 const AdminAsistencia = (() => {
-  let _vecinos = [], _estados = {}, _cuotaAmts = {}, _tipo = 'A', _nombreSel = 'Asamblea Ordinaria';
+  let _vecinos = [], _estados = {}, _cuotaAmts = {}, _tipo = 'A', _nombreSel = 'Asamblea Ordinaria', _nombreCustom = '';
   let _eventos = [];
+  const CUOTA_MIN_MES = 2, CUOTA_MIN_ANIO = 2025;
   let _cuotaMes  = new Date().getMonth() + 1;
   let _cuotaAnio = new Date().getFullYear();
   let _cuotaPagados = new Set();
@@ -30,12 +31,18 @@ const AdminAsistencia = (() => {
         <div class="field"><label>Fecha</label><input type="date" id="a-fecha" value="${today()}"></div>
         <div class="field"><label>Evento</label>
           <select id="a-nombre-sel" onchange="AdminAsistencia.onNombreChange()">
-            <option value="Asamblea Ordinaria"    ${_nombreSel==='Asamblea Ordinaria'   ?'selected':''}>Asamblea Ordinaria</option>
+            <option value="Asamblea Ordinaria"      ${_nombreSel==='Asamblea Ordinaria'     ?'selected':''}>Asamblea Ordinaria</option>
             <option value="Asamblea Extraordinaria" ${_nombreSel==='Asamblea Extraordinaria'?'selected':''}>Asamblea Extraordinaria</option>
-            <option value="Faena"                 ${_nombreSel==='Faena'                ?'selected':''}>Faena</option>
+            <option value="Faena"                   ${_nombreSel==='Faena'                  ?'selected':''}>Faena</option>
+            <option value="otro"                    ${_nombreSel==='otro'                   ?'selected':''}>Otro (escribir nombre)…</option>
           </select>
         </div>
-        <div class="field"><label>Descripción opcional</label><input type="text" id="a-desc" placeholder="Ej: 2ª convocatoria, elección de junta..."></div>
+        <div id="a-custom-wrap" style="display:${_nombreSel==='otro'?'block':'none'}">
+          <div class="field"><label>Nombre del evento</label><input type="text" id="a-nombre-custom" value="${esc(_nombreCustom)}" placeholder="Escribe el nombre del evento..."></div>
+        </div>
+        <div id="a-desc-wrap" style="display:${_nombreSel==='otro'?'none':'block'}">
+          <div class="field"><label>Descripción opcional</label><input type="text" id="a-desc" placeholder="Ej: 2ª convocatoria, elección de junta..."></div>
+        </div>
         <div class="field"><label>Multa por inasistencia</label>
           <div class="tipo-row">
             <button class="tipo-btn ${_tipo==='A'?'on-A':''}" onclick="AdminAsistencia.setTipo('A')">Asamblea<small>S/25</small></button>
@@ -86,6 +93,7 @@ const AdminAsistencia = (() => {
       const amt       = _cuotaAmts[v.id] || 0;
       const exonTotal = v.exonerado === 'total';
       const exonAsam  = v.exonerado === 'asamblea' && _tipo === 'A';
+      const exonCuota = v.mz?.toUpperCase() === 'C' && (v.lote === 4 || v.lote === '4');
       const est       = _estados[v.id] || 'P';
       return `
       <div class="asist-item">
@@ -95,21 +103,26 @@ const AdminAsistencia = (() => {
         </div>
         <div class="asist-controls">
           <button class="estado-toggle estado-${est}" onclick="AdminAsistencia.toggleEstado(${v.id})" id="est-${v.id}">${est==='F'?'Falta':'Presente'}</button>
-          ${!exonTotal
-            ? (pagado
-                ? `<span class="pill pill-green" style="font-size:10px;padding:1px 6px">✓ S/2</span>`
-                : `<div style="display:flex;align-items:center;gap:3px">
-                    <button class="cuota-toggle ${amt>0?'cuota-pagado':''}" onclick="AdminAsistencia.toggleCuota(${v.id})" id="cuota-${v.id}">${amt>0?'✓ S/'+amt:'S/2'}</button>
-                    ${amt>0?`<input type="number" id="cuota-amt-${v.id}" value="${amt}" min="2" step="2" style="width:40px;font-size:12px;padding:2px 3px;border:1px solid var(--border);border-radius:4px;text-align:center;background:var(--card)" oninput="AdminAsistencia.setCuotaAmt(${v.id},this.value)">`:''}
-                  </div>`)
-            : `<span style="font-size:10px;color:var(--text3)">—</span>`
+          ${exonCuota
+            ? `<span style="font-size:10px;color:var(--blue)">Cobrador</span>`
+            : !exonTotal
+              ? (pagado
+                  ? `<span class="pill pill-green" style="font-size:10px;padding:1px 6px">✓ S/2</span>`
+                  : `<div style="display:flex;align-items:center;gap:3px">
+                      <button class="cuota-toggle ${amt>0?'cuota-pagado':''}" onclick="AdminAsistencia.toggleCuota(${v.id})" id="cuota-${v.id}">${amt>0?'✓ S/'+amt:'S/2'}</button>
+                      ${amt>0?`<input type="number" id="cuota-amt-${v.id}" value="${amt}" min="2" step="2" style="width:40px;font-size:12px;padding:2px 3px;border:1px solid var(--border);border-radius:4px;text-align:center;background:var(--card)" oninput="AdminAsistencia.setCuotaAmt(${v.id},this.value)">`:''}
+                    </div>`)
+              : `<span style="font-size:10px;color:var(--text3)">—</span>`
           }
         </div>
       </div>`;
     }).join('');
   }
 
-  function setTipo(t) { _tipo = t; _draw(); }
+  function setTipo(t) {
+    _nombreCustom = document.getElementById('a-nombre-custom')?.value || _nombreCustom;
+    _tipo = t; _draw();
+  }
   function filtrar(q) { _renderLista(q); }
   function marcarTodos(est) {
     _vecinos.forEach(v => _estados[v.id] = est);
@@ -120,6 +133,9 @@ const AdminAsistencia = (() => {
     _cuotaMes += d;
     if (_cuotaMes > 12) { _cuotaMes = 1;  _cuotaAnio++; }
     if (_cuotaMes < 1)  { _cuotaMes = 12; _cuotaAnio--; }
+    if (_cuotaAnio < CUOTA_MIN_ANIO || (_cuotaAnio === CUOTA_MIN_ANIO && _cuotaMes < CUOTA_MIN_MES)) {
+      _cuotaMes = CUOTA_MIN_MES; _cuotaAnio = CUOTA_MIN_ANIO;
+    }
     const { data: pagMes } = await db.from('pagos_cuota_mes')
       .select('vecino_id').eq('anio', _cuotaAnio).eq('mes', _cuotaMes);
     _cuotaPagados = new Set((pagMes || []).map(p => p.vecino_id));
@@ -144,11 +160,14 @@ const AdminAsistencia = (() => {
   }
 
   async function guardar() {
-    const fecha      = document.getElementById('a-fecha').value;
-    const nombreSel  = document.getElementById('a-nombre-sel')?.value || _nombreSel;
-    const desc       = (document.getElementById('a-desc')?.value || '').trim();
-    const nombre     = desc ? `${nombreSel} — ${desc}` : nombreSel;
+    const fecha     = document.getElementById('a-fecha').value;
+    const nombreSel = document.getElementById('a-nombre-sel')?.value || _nombreSel;
+    const custom    = (document.getElementById('a-nombre-custom')?.value || '').trim();
+    const desc      = (document.getElementById('a-desc')?.value || '').trim();
     if (!fecha) { showToast('Completa la fecha del evento', 'err'); return; }
+    if (nombreSel === 'otro' && !custom) { showToast('Escribe el nombre del evento', 'err'); return; }
+    const nombreBase = nombreSel === 'otro' ? custom : nombreSel;
+    const nombre     = desc ? `${nombreBase} — ${desc}` : nombreBase;
     showLoading();
 
     const { data: ev, error } = await db.from('eventos').insert({ fecha, nombre, tipo: _tipo }).select().single();
@@ -201,7 +220,7 @@ const AdminAsistencia = (() => {
 
     hideLoading();
     const faltas = _vecinos.filter(v => _estados[v.id] === 'F').length;
-    _estados = {}; _cuotaAmts = {}; _nombreSel = 'Asamblea Ordinaria'; _tipo = 'A';
+    _estados = {}; _cuotaAmts = {}; _nombreSel = 'Asamblea Ordinaria'; _nombreCustom = ''; _tipo = 'A';
     showToast(`✓ Guardado — ${faltas} faltas · ${pagando.length} cobros almacén (${mesesTotal} mes${mesesTotal !== 1 ? 'es' : ''})`);
     AdminApp.tab('inicio');
   }
@@ -231,13 +250,22 @@ const AdminAsistencia = (() => {
     const sel = document.getElementById('a-nombre-sel');
     if (!sel) return;
     _nombreSel = sel.value;
-    const nuevoTipo = _nombreSel === 'Faena' ? 'F' : 'A';
-    if (nuevoTipo !== _tipo) {
-      _tipo = nuevoTipo;
-      document.querySelectorAll('#admin-body .tipo-btn').forEach(b => {
-        const m = b.getAttribute('onclick')?.match(/setTipo\('(\w)'\)/);
-        if (m) b.className = `tipo-btn${_tipo === m[1] ? ' on-' + m[1] : ''}`;
-      });
+    _nombreCustom = document.getElementById('a-nombre-custom')?.value || _nombreCustom;
+
+    const customWrap = document.getElementById('a-custom-wrap');
+    const descWrap   = document.getElementById('a-desc-wrap');
+    if (customWrap) customWrap.style.display = _nombreSel === 'otro' ? 'block' : 'none';
+    if (descWrap)   descWrap.style.display   = _nombreSel === 'otro' ? 'none'  : 'block';
+
+    if (_nombreSel !== 'otro') {
+      const nuevoTipo = _nombreSel === 'Faena' ? 'F' : 'A';
+      if (nuevoTipo !== _tipo) {
+        _tipo = nuevoTipo;
+        document.querySelectorAll('#admin-body .tipo-btn').forEach(b => {
+          const m = b.getAttribute('onclick')?.match(/setTipo\('(\w)'\)/);
+          if (m) b.className = `tipo-btn${_tipo === m[1] ? ' on-' + m[1] : ''}`;
+        });
+      }
     }
   }
 
