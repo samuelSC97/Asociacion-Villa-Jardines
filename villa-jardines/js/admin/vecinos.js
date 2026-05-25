@@ -32,7 +32,7 @@ const AdminVecinos = (() => {
             <div class="avatar">${initials(v.nombre)}</div>
             <div class="row-info">
               <div class="row-name">${esc(v.nombre)}</div>
-              <div class="row-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}</div>
+              <div class="row-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}${v.exonerado && v.exonerado !== 'no' ? ' · ' + (v.exonerado === 'total' ? 'Exonerado' : 'Exon. asambleas') : ''}</div>
             </div>
             ${nf > 0 ? `<span class="pill pill-red">${nf} falta${nf > 1 ? 's' : ''}</span>` : `<span class="pill pill-green">Sin faltas</span>`}
           </div>`;
@@ -67,9 +67,12 @@ const AdminVecinos = (() => {
           <div class="field"><label>Celular</label><input type="text" id="nv-cel" placeholder="Opcional" inputmode="numeric"></div>
         </div>
         <div class="field"><label>Cargo</label><input type="text" id="nv-cargo" placeholder="Presidente, Tesorero… (opcional)"></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-          <input type="checkbox" id="nv-exonerado">
-          <label for="nv-exonerado" style="text-transform:none;font-size:13px;font-weight:400;letter-spacing:0;cursor:pointer">Exonerado de cuotas y almacén</label>
+        <div class="field"><label>Exoneración</label>
+          <select id="nv-exonerado">
+            <option value="no">Sin exoneración</option>
+            <option value="asamblea">Exonerado de asambleas</option>
+            <option value="total">Exonerado total</option>
+          </select>
         </div>
         <button class="btn btn-dark" onclick="AdminVecinos.guardarNuevo()">✓ Registrar vecino</button>
       </div>`;
@@ -83,7 +86,7 @@ const AdminVecinos = (() => {
     const dni       = (document.getElementById('nv-dni').value || '').trim();
     const celular   = (document.getElementById('nv-cel').value || '').trim();
     const cargo     = (document.getElementById('nv-cargo').value || '').trim();
-    const exonerado = document.getElementById('nv-exonerado').checked;
+    const exonerado = document.getElementById('nv-exonerado').value;
     if (!nombre)      { showToast('El nombre es obligatorio', 'err'); return; }
     if (!mz || !lote) { showToast('Manzana y Lote son obligatorios', 'err'); return; }
     if (!nro)         { showToast('El número de vecino es obligatorio', 'err'); return; }
@@ -135,10 +138,12 @@ const AdminVecinos = (() => {
   async function _renderDetalle(id) {
     const el = document.getElementById('admin-body');
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
-    const [{ data: v }, { data: asist }, { data: apoyos }] = await Promise.all([
+    const [{ data: v }, { data: asist }, { data: apoyos }, { data: deudasAnt }, { data: exonerHist }] = await Promise.all([
       db.from('vecinos').select('*').eq('id', id).single(),
       db.from('asistencias').select('*,eventos(*),subsanaciones(*)').eq('vecino_id', id).order('created_at', { ascending: false }),
-      db.from('apoyos').select('*').eq('vecino_id', id).order('fecha', { ascending: false })
+      db.from('apoyos').select('*').eq('vecino_id', id).order('fecha', { ascending: false }),
+      db.from('deudas_anteriores').select('*').eq('vecino_id', id).eq('pagado', false).order('anio', { ascending: true }),
+      db.from('exoneracion_historial').select('*').eq('vecino_id', id).order('created_at', { ascending: false }).limit(10)
     ]);
     const faltas     = (asist || []).filter(a => a.estado === 'F');
     const multaTotal = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
@@ -161,7 +166,7 @@ const AdminVecinos = (() => {
           <div>
             <div style="font-size:15px;font-weight:600">${esc(v.nombre)}</div>
             <div style="font-size:12px;color:var(--text2);margin-top:2px">Mz ${esc(v.mz)} — Lote ${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}</div>
-            ${v.exonerado ? '<span class="pill pill-green" style="margin-top:4px">Exonerado</span>' : ''}
+            ${v.exonerado !== 'no' ? `<span class="pill pill-green" style="margin-top:4px">${v.exonerado === 'total' ? 'Exonerado total' : 'Exonerado asambleas'}</span>` : ''}
           </div>
         </div>
         <div class="grid-2">
@@ -169,6 +174,13 @@ const AdminVecinos = (() => {
           <div class="field"><label>Celular</label><input type="text" id="ed-cel" value="${esc(v.celular || '')}" placeholder="Sin registro"></div>
         </div>
         <div class="field"><label>Cargo</label><input type="text" id="ed-cargo" value="${esc(v.cargo || '')}" placeholder="Ninguno"></div>
+        <div class="field"><label>Exoneración</label>
+          <select id="ed-exonerado">
+            <option value="no" ${v.exonerado === 'no' || !v.exonerado ? 'selected' : ''}>Sin exoneración</option>
+            <option value="asamblea" ${v.exonerado === 'asamblea' ? 'selected' : ''}>Exonerado de asambleas</option>
+            <option value="total" ${v.exonerado === 'total' ? 'selected' : ''}>Exonerado total</option>
+          </select>
+        </div>
         <button class="btn btn-dark btn-sm" onclick="AdminVecinos.guardarDatos(${id})">Guardar datos</button>
       </div>
 
@@ -208,6 +220,17 @@ const AdminVecinos = (() => {
         <button class="btn btn-dark" onclick="AdminVecinos.registrarApoyo(${id})">🪙 Registrar apoyo</button>
       </div>
 
+      ${(deudasAnt || []).length ? `
+      <div class="sec-title">Deudas anteriores sin pagar</div>
+      <div class="card card-flush">
+        ${(deudasAnt || []).map(d => `<div class="pago-det-row">
+          <div>
+            <div style="font-size:13px;font-weight:500">Deuda anterior ${d.anio}${d.nota ? ' — ' + esc(d.nota) : ''}</div>
+          </div>
+          <span class="pill pill-red">S/${d.monto}</span>
+        </div>`).join('')}
+      </div>` : ''}
+
       <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 7px">
         <div class="sec-title" style="margin:0">Historial de asistencia</div>
         <button class="btn btn-sm btn-outline no-print" onclick="window.print()">🖨️ Exportar PDF</button>
@@ -237,6 +260,17 @@ const AdminVecinos = (() => {
             <div style="font-size:11px;color:var(--text2)">${formatFecha(a.fecha)}</div>
           </div>
           <span class="pill pill-green">S/${a.monto}</span>
+        </div>`).join('')}
+      </div>` : ''}
+
+      ${(exonerHist || []).length ? `
+      <div class="sec-title">Historial de exoneración</div>
+      <div class="card card-flush">
+        ${(exonerHist || []).map(h => `<div class="hist-row">
+          <div class="hist-left">
+            <div class="hist-evento">${esc(h.tipo_anterior || 'no')} → ${esc(h.tipo_nuevo)}</div>
+            <div class="hist-fecha">${formatFecha(h.fecha_cambio)}${h.nota ? ' · ' + esc(h.nota) : ''}</div>
+          </div>
         </div>`).join('')}
       </div>` : ''}`;
   }
@@ -268,13 +302,25 @@ const AdminVecinos = (() => {
   }
 
   async function guardarDatos(id) {
+    const exonerado = document.getElementById('ed-exonerado').value;
+    const { data: current } = await db.from('vecinos').select('exonerado').eq('id', id).single();
     const { error } = await db.from('vecinos').update({
-      dni:     document.getElementById('ed-dni').value,
-      celular: document.getElementById('ed-cel').value,
-      cargo:   document.getElementById('ed-cargo').value
+      dni:      document.getElementById('ed-dni').value,
+      celular:  document.getElementById('ed-cel').value,
+      cargo:    document.getElementById('ed-cargo').value,
+      exonerado
     }).eq('id', id);
-    if (error) showToast('Error: ' + error.message, 'err');
-    else { showToast('✓ Datos guardados'); _renderDetalle(id); }
+    if (error) { showToast('Error: ' + error.message, 'err'); return; }
+    if (current && (current.exonerado || 'no') !== exonerado) {
+      await db.from('exoneracion_historial').insert({
+        vecino_id:     id,
+        tipo_anterior: current.exonerado || 'no',
+        tipo_nuevo:    exonerado,
+        fecha_cambio:  today()
+      });
+    }
+    showToast('✓ Datos guardados');
+    _renderDetalle(id);
   }
 
   async function pagoLibre(id) {
@@ -284,11 +330,30 @@ const AdminVecinos = (() => {
     const amnistia = document.getElementById('amnistia-chk')?.checked || false;
     if (!monto || !fecha) { showToast('Completa monto y fecha', 'err'); return; }
     showLoading();
-    const { data: faltas } = await db.from('asistencias').select('*,eventos(*)').eq('vecino_id', id).eq('estado', 'F').order('created_at', { ascending: true });
-    let resto = monto, subsanadas = 0;
+
+    const [{ data: deudas }, { data: faltas }] = await Promise.all([
+      db.from('deudas_anteriores').select('*').eq('vecino_id', id).eq('pagado', false).order('anio', { ascending: true }),
+      db.from('asistencias').select('*,eventos(*)').eq('vecino_id', id).eq('estado', 'F').order('created_at', { ascending: true })
+    ]);
+
+    let resto = monto, deudasCubiertas = 0;
+    for (const d of (deudas || [])) {
+      if (resto <= 0) break;
+      const debe = parseFloat(d.monto);
+      if (resto >= debe) {
+        await db.from('deudas_anteriores').update({ pagado: true }).eq('id', d.id);
+        resto -= debe; deudasCubiertas++;
+      } else {
+        await db.from('deudas_anteriores').update({ monto: debe - resto }).eq('id', d.id);
+        resto = 0;
+      }
+    }
+
+    let subsanadas = 0;
     for (const falta of (faltas || [])) {
-      const multa    = MULTAS[falta.eventos?.tipo] || 50;
-      const cobro    = amnistia ? multa / 2 : multa;
+      if (resto <= 0) break;
+      const multa  = MULTAS[falta.eventos?.tipo] || 50;
+      const cobro  = amnistia ? multa / 2 : multa;
       if (resto >= cobro) {
         const notaFinal = nota || (amnistia ? 'Amnistía 50%' : 'Pago en efectivo');
         await db.from('asistencias').update({ estado: 'J' }).eq('id', falta.id);
@@ -299,8 +364,12 @@ const AdminVecinos = (() => {
     }
     if (resto > 0) await db.from('apoyos').insert({ vecino_id: id, fecha, monto: resto, motivo: nota ? `Guardadito (${nota})` : 'Guardadito', estado: 'guardadito' });
     hideLoading();
-    const tag = amnistia ? 'Amnistía 50%' : `S/${monto}`;
-    showToast(`✓ ${tag} — ${subsanadas} falta${subsanadas!==1?'s':''} subsanada${subsanadas!==1?'s':''}${resto>0?' · S/'+resto+' guardadito':''}`);
+    const tag    = amnistia ? 'Amnistía 50%' : `S/${monto}`;
+    const partes = [];
+    if (deudasCubiertas > 0) partes.push(`${deudasCubiertas} deuda${deudasCubiertas !== 1 ? 's' : ''} anterior${deudasCubiertas !== 1 ? 'es' : ''} cubierta${deudasCubiertas !== 1 ? 's' : ''}`);
+    if (subsanadas > 0)      partes.push(`${subsanadas} falta${subsanadas !== 1 ? 's' : ''} subsanada${subsanadas !== 1 ? 's' : ''}`);
+    if (resto > 0)           partes.push(`S/${resto} guardadito`);
+    showToast(`✓ ${tag} — ${partes.join(' · ') || 'sin deudas pendientes'}`);
     _renderDetalle(id);
   }
 

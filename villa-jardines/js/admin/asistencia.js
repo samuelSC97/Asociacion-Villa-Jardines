@@ -75,22 +75,26 @@ const AdminAsistencia = (() => {
   function _renderLista(q) {
     const fil = _vecinos.filter(v => !q || v.nombre.toLowerCase().includes(q.toLowerCase()));
     document.getElementById('a-lista').innerHTML = fil.map(v => {
-      const pagado = _cuotaPagados.has(v.id);
-      const amt    = _cuotaAmts[v.id] || 0;
+      const pagado    = _cuotaPagados.has(v.id);
+      const amt       = _cuotaAmts[v.id] || 0;
+      const exonTotal = v.exonerado === 'total';
+      const exonAsam  = v.exonerado === 'asamblea' && _tipo === 'A';
       return `
       <div class="asist-item">
         <div class="avatar" style="width:30px;height:30px;font-size:10px">${initials(v.nombre)}</div>
         <div style="flex:1;min-width:0">
           <div class="asist-name">${esc(v.nombre.split(',')[0].trim())}</div>
-          <div class="asist-sub">Mz ${esc(v.mz)}-${esc(v.lote)}</div>
+          <div class="asist-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${exonTotal ? ' · Exonerado' : exonAsam ? ' · Exon. asamblea' : ''}</div>
         </div>
         <div class="asist-controls">
-          ${pagado
-            ? `<span class="pill pill-green" style="font-size:10px;padding:1px 6px">✓ Pagó</span>`
-            : `<div style="display:flex;align-items:center;gap:3px">
-                <button class="cuota-toggle ${amt>0?'cuota-pagado':''}" onclick="AdminAsistencia.toggleCuota(${v.id})" id="cuota-${v.id}">${amt>0?'✓':'S/2'}</button>
-                ${amt>0?`<input type="number" id="cuota-amt-${v.id}" value="${amt}" min="2" step="2" style="width:44px;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;text-align:center;background:var(--card)" oninput="AdminAsistencia.setCuotaAmt(${v.id},this.value)">`:''}
-              </div>`
+          ${!exonTotal
+            ? (pagado
+                ? `<span class="pill pill-green" style="font-size:10px;padding:1px 6px">✓ Pagó</span>`
+                : `<div style="display:flex;align-items:center;gap:3px">
+                    <button class="cuota-toggle ${amt>0?'cuota-pagado':''}" onclick="AdminAsistencia.toggleCuota(${v.id})" id="cuota-${v.id}">${amt>0?'✓':'S/2'}</button>
+                    ${amt>0?`<input type="number" id="cuota-amt-${v.id}" value="${amt}" min="2" step="2" style="width:44px;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;text-align:center;background:var(--card)" oninput="AdminAsistencia.setCuotaAmt(${v.id},this.value)">`:''}
+                  </div>`)
+            : `<span style="font-size:10px;color:var(--text3)">—</span>`
           }
           <button class="estado-toggle estado-${_estados[v.id]||'P'}" onclick="AdminAsistencia.toggleEstado(${v.id})" id="est-${v.id}">${_estados[v.id]==='F'?'Falta':'Presente'}</button>
         </div>
@@ -140,7 +144,11 @@ const AdminAsistencia = (() => {
 
     const { data: ev, error } = await db.from('eventos').insert({ fecha, nombre, tipo: _tipo }).select().single();
     if (error) { hideLoading(); showToast('Error: ' + error.message, 'err'); return; }
-    const rows = _vecinos.map(v => ({ vecino_id: v.id, evento_id: ev.id, estado: _estados[v.id] || 'P' }));
+    const rows = _vecinos.map(v => {
+      let estado = _estados[v.id] || 'P';
+      if (v.exonerado === 'total' || (v.exonerado === 'asamblea' && _tipo === 'A')) estado = 'P';
+      return { vecino_id: v.id, evento_id: ev.id, estado };
+    });
     await db.from('asistencias').insert(rows);
 
     const pagando = _vecinos.filter(v => (_cuotaAmts[v.id] || 0) > 0);

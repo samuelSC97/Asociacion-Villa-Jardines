@@ -16,7 +16,7 @@ const AdminPagos = (() => {
     const pagMap  = {};
     (cuotas || []).forEach(c => { pagMap[c.vecino_id] = (pagMap[c.vecino_id] || 0) + parseFloat(c.monto); });
     const totalRec = Object.values(pagMap).reduce((s, v) => s + v, 0);
-    const noExon   = (todos || []).filter(v => !v.exonerado);
+    const noExon   = (todos || []).filter(v => v.exonerado === 'no' || !v.exonerado);
     const firstV   = noExon[0];
     const firstDebe = firstV ? Math.max(0, 24 - (pagMap[firstV.id] || 0)) : 24;
 

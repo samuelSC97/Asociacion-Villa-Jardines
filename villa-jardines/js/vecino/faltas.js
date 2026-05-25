@@ -3,16 +3,17 @@ const VecinoFaltas = (() => {
     const el = document.getElementById('vecino-body');
     const v  = Auth.getVecino();
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
-    const { data: asist } = await db
-      .from('asistencias')
-      .select('*,eventos(*),subsanaciones(*)')
-      .eq('vecino_id', v.id)
-      .order('created_at', { ascending: false });
+    const [{ data: asist }, { data: deudasAnt }] = await Promise.all([
+      db.from('asistencias').select('*,eventos(*),subsanaciones(*)').eq('vecino_id', v.id).order('created_at', { ascending: false }),
+      db.from('deudas_anteriores').select('*').eq('vecino_id', v.id).eq('pagado', false).order('anio', { ascending: true })
+    ]);
 
-    const presentes  = (asist||[]).filter(a=>a.estado==='P').length;
-    const faltas     = (asist||[]).filter(a=>a.estado==='F');
-    const subsanadas = (asist||[]).filter(a=>a.estado==='J').length;
-    const multaTotal = faltas.reduce((s,a)=>s+(MULTAS[a.eventos?.tipo]||0),0);
+    const presentes   = (asist||[]).filter(a=>a.estado==='P').length;
+    const faltas      = (asist||[]).filter(a=>a.estado==='F');
+    const subsanadas  = (asist||[]).filter(a=>a.estado==='J').length;
+    const multaFaltas = faltas.reduce((s,a)=>s+(MULTAS[a.eventos?.tipo]||0),0);
+    const multaDeudas = (deudasAnt||[]).reduce((s,d)=>s+parseFloat(d.monto),0);
+    const multaTotal  = multaFaltas + multaDeudas;
 
     el.innerHTML = `
       <div class="metrics">
@@ -21,10 +22,20 @@ const VecinoFaltas = (() => {
         <div class="metric"><div class="metric-val c-orange">${subsanadas}</div><div class="metric-lbl">Subsanadas</div></div>
       </div>
 
-      ${faltas.length>0?`<div class="card" style="border-left:3px solid var(--red);background:var(--red-bg)">
-        <div style="font-weight:600;color:var(--red)">Multas pendientes: S/${multaTotal}</div>
-        <div style="font-size:12px;color:var(--red);margin-top:3px">${faltas.length} falta${faltas.length>1?'s':''} sin subsanar — Acércate al presidente para ponerte al día.</div>
-      </div>`:'<div class="card" style="border-left:3px solid var(--green);background:var(--green-bg)"><div style="font-weight:600;color:var(--green)">✓ Sin faltas pendientes</div></div>'}
+      ${multaTotal>0?`<div class="card" style="border-left:3px solid var(--red);background:var(--red-bg)">
+        <div style="font-weight:600;color:var(--red)">Deuda total pendiente: S/${multaTotal}</div>
+        ${multaDeudas>0&&multaFaltas>0?`<div style="font-size:12px;color:var(--red);margin-top:2px">Faltas S/${multaFaltas} · Deudas anteriores S/${multaDeudas}</div>`:''}
+        <div style="font-size:12px;color:var(--red);margin-top:3px">${faltas.length>0?`${faltas.length} falta${faltas.length>1?'s':''} sin subsanar · `:''}Acércate al presidente para ponerte al día.</div>
+      </div>`:'<div class="card" style="border-left:3px solid var(--green);background:var(--green-bg)"><div style="font-weight:600;color:var(--green)">✓ Sin deudas pendientes</div></div>'}
+
+      ${(deudasAnt||[]).length?`
+      <div class="sec-title">Deudas anteriores</div>
+      <div class="card card-flush">
+        ${(deudasAnt||[]).map(d=>`<div class="pago-det-row">
+          <div><div style="font-size:13px;font-weight:500">Deuda ${d.anio}${d.nota?' — '+esc(d.nota):''}</div></div>
+          <span class="pill pill-red">S/${d.monto}</span>
+        </div>`).join('')}
+      </div>`:'' }
 
       <div class="sec-title">Historial completo de asistencia</div>
       <div class="card card-flush">
