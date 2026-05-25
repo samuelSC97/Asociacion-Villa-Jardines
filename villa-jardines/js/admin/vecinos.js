@@ -1,6 +1,6 @@
 const AdminVecinos = (() => {
   let _todos = [], _faltasMap = {}, _detalle = null, _apoyoTipo = 'Faena extra', _anio = new Date().getFullYear();
-  let _archivadosCount = 0, _creandoNuevo = false;
+  let _archivadosCount = 0, _creandoNuevo = false, _editandoAsist = null;
 
   async function render() {
     if (_detalle)     { await _renderDetalle(_detalle); return; }
@@ -238,16 +238,21 @@ const AdminVecinos = (() => {
       </div>
       <div class="card card-flush">
         ${(asist || []).map(a => {
-          const sub  = a.subsanaciones?.[0];
-          const tipo = a.eventos?.tipo;
-          return `<div class="hist-row">
+          const sub   = a.subsanaciones?.[0];
+          const tipo  = a.eventos?.tipo;
+          const subId = sub?.id       ?? 'null';
+          const apoId = sub?.apoyo_id ?? 'null';
+          return `<div class="hist-row" id="arow-${a.id}">
             <div class="hist-left">
               <div class="hist-evento">${esc(a.eventos?.nombre || 'Evento')}</div>
               <div class="hist-fecha">${formatFecha(a.eventos?.fecha)} · <span class="pill ${tipoColor(tipo)}" style="font-size:10px;padding:1px 6px">${tipoLabel(tipo)}</span></div>
               ${a.estado === 'J' && sub ? `<div class="hist-nota">✅ Subsanado ${formatFecha(sub.fecha_subsanacion)} — <em>${esc(sub.nota || 'Apoyo registrado')}</em></div>` : ''}
               ${a.estado === 'F' ? `<div style="font-size:11px;color:var(--red);margin-top:2px">⚠️ Multa pendiente: S/${MULTAS[tipo] || 0}</div>` : ''}
             </div>
-            ${a.estado === 'P' ? `<span class="pill pill-green">Presente</span>` : a.estado === 'J' ? `<span class="pill pill-orange">Subsanado</span>` : `<span class="pill pill-red">Falta</span>`}
+            <div id="aright-${a.id}" style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+              ${a.estado === 'P' ? `<span class="pill pill-green">Presente</span>` : a.estado === 'J' ? `<span class="pill pill-orange">Subsanado</span>` : `<span class="pill pill-red">Falta</span>`}
+              <button class="btn btn-sm btn-outline no-print" style="font-size:10px;padding:1px 7px" onclick="AdminVecinos.iniciarEdicion(${a.id},'${a.estado}',${id},${subId},${apoId})">Editar</button>
+            </div>
           </div>`;
         }).join('') || '<div style="color:var(--text2);font-size:13px;padding:12px 0">Sin registros de asistencia</div>'}
       </div>
@@ -431,6 +436,90 @@ const AdminVecinos = (() => {
     _renderDetalle(id);
   }
 
+  function iniciarEdicion(asistId, estadoActual, vecinoId, subId, apoId) {
+    _editandoAsist = { id: asistId, estado: estadoActual, vecinoId, subId: subId || null, apoId: apoId || null };
+    const rightEl = document.getElementById('aright-' + asistId);
+    if (!rightEl) return;
+
+    if (estadoActual === 'J') {
+      rightEl.innerHTML = `
+        <div style="font-size:11px;color:var(--orange);font-weight:600;text-align:right;max-width:190px;line-height:1.4;margin-bottom:4px">
+          ⚠️ Falta subsanada<br><span style="font-weight:400">Si realmente asistió, la subsanación pasará a la siguiente falta pendiente.</span>
+        </div>
+        <div style="display:flex;gap:4px;justify-content:flex-end">
+          <button class="btn btn-sm btn-green" onclick="AdminVecinos.pedirConfirmEdit()">✓ Sí asistió</button>
+          <button class="btn btn-sm btn-outline" onclick="AdminVecinos.cancelarEdit()">Cancelar</button>
+        </div>`;
+    } else if (estadoActual === 'P') {
+      rightEl.innerHTML = `
+        <div style="display:flex;gap:4px;justify-content:flex-end">
+          <button class="btn btn-sm btn-red" onclick="AdminVecinos.pedirConfirmEdit()">✗ Poner falta</button>
+          <button class="btn btn-sm btn-outline" onclick="AdminVecinos.cancelarEdit()">Cancelar</button>
+        </div>`;
+    } else {
+      rightEl.innerHTML = `
+        <div style="display:flex;gap:4px;justify-content:flex-end">
+          <button class="btn btn-sm btn-green" onclick="AdminVecinos.pedirConfirmEdit()">✓ Sí asistió</button>
+          <button class="btn btn-sm btn-outline" onclick="AdminVecinos.cancelarEdit()">Cancelar</button>
+        </div>`;
+    }
+  }
+
+  function cancelarEdit() {
+    _editandoAsist = null;
+    _renderDetalle(_detalle);
+  }
+
+  function pedirConfirmEdit() {
+    if (!_editandoAsist) return;
+    const msgs = {
+      'P': 'Vas a registrar una FALTA para este vecino en este evento. Se generará una multa pendiente.',
+      'F': 'Vas a marcar como PRESENTE. Se eliminará la multa pendiente de este evento.',
+      'J': 'Vas a marcar como PRESENTE. La subsanación existente se reasignará a la siguiente falta pendiente (o se liberará como guardadito si no hay más faltas).'
+    };
+    Modal.pedir(msgs[_editandoAsist.estado], ejecutarEdit);
+  }
+
+  async function ejecutarEdit() {
+    if (!_editandoAsist) return;
+    const { id: asistId, estado, vecinoId, subId, apoId } = _editandoAsist;
+    _editandoAsist = null;
+    showLoading();
+
+    if (estado === 'P') {
+      await db.from('asistencias').update({ estado: 'F' }).eq('id', asistId);
+      hideLoading();
+      showToast('✓ Registrado como falta');
+    } else if (estado === 'F') {
+      await db.from('asistencias').update({ estado: 'P' }).eq('id', asistId);
+      hideLoading();
+      showToast('✓ Registrado como presente');
+    } else if (estado === 'J') {
+      await db.from('asistencias').update({ estado: 'P' }).eq('id', asistId);
+      if (subId) {
+        const { data: proxFalta } = await db.from('asistencias')
+          .select('id').eq('vecino_id', vecinoId).eq('estado', 'F')
+          .order('created_at', { ascending: true }).limit(1).maybeSingle();
+        if (proxFalta) {
+          await db.from('asistencias').update({ estado: 'J' }).eq('id', proxFalta.id);
+          await db.from('subsanaciones').update({ asistencia_id: proxFalta.id }).eq('id', subId);
+          hideLoading();
+          showToast('✓ Corregido — subsanación reubicada en la siguiente falta pendiente');
+        } else {
+          await db.from('subsanaciones').delete().eq('id', subId);
+          if (apoId) await db.from('apoyos').update({ estado: 'guardadito' }).eq('id', apoId);
+          hideLoading();
+          showToast('✓ Corregido — sin más faltas pendientes, apoyo liberado como guardadito');
+        }
+      } else {
+        hideLoading();
+        showToast('✓ Registrado como presente');
+      }
+    }
+
+    _renderDetalle(vecinoId);
+  }
+
   async function agregarAcceso(vecinoId) {
     const dni    = (document.getElementById('acc-dni').value || '').trim();
     const nombre = (document.getElementById('acc-nombre').value || '').trim();
@@ -460,5 +549,6 @@ const AdminVecinos = (() => {
 
   return { render, filtrar, ver, ir, volver, nuevoVecino, cancelarNuevo, guardarNuevo,
            verArchivados, reactivar, archivar, setApoyoTipo, updateApoyoTotal,
-           guardarDatos, pagoLibre, registrarApoyo, agregarAcceso, toggleAcceso };
+           guardarDatos, pagoLibre, registrarApoyo, agregarAcceso, toggleAcceso,
+           iniciarEdicion, cancelarEdit, pedirConfirmEdit, ejecutarEdit };
 })();
