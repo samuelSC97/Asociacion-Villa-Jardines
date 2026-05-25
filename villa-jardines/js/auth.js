@@ -30,9 +30,22 @@ const Auth = (() => {
     const res = document.getElementById('l-resultados');
     if (dni.length < 8) { res.innerHTML = '<div class="msg msg-err">Ingresa tu DNI completo (8 dígitos)</div>'; return; }
     showLoading();
-    const { data } = await db.from('vecinos').select('*').eq('dni', dni).eq('activo', true).single();
+
+    // Check usuarios.dni first (allows multiple accesses per lote)
+    const { data: usuario } = await db.from('usuarios')
+      .select('vecino_id').eq('dni', dni).eq('rol', 'vecino').eq('activo', true).maybeSingle();
+
+    let data = null;
+    if (usuario?.vecino_id) {
+      const { data: v } = await db.from('vecinos').select('*').eq('id', usuario.vecino_id).eq('activo', true).single();
+      data = v;
+    } else {
+      // Fallback: look up by vecinos.dni
+      const { data: v } = await db.from('vecinos').select('*').eq('dni', dni).eq('activo', true).single();
+      data = v;
+    }
     hideLoading();
-    if (!data) { res.innerHTML = '<div class="msg msg-err">DNI no encontrado. Solicita al administrador que registre tu DNI.</div>'; return; }
+    if (!data) { res.innerHTML = '<div class="msg msg-err">DNI no encontrado. Solicita al administrador que registre tu acceso.</div>'; return; }
     res.innerHTML = `
       <div class="search-res">
         <div class="search-item" onclick="Auth.loginVecino(${data.id})">
@@ -61,11 +74,12 @@ const Auth = (() => {
   async function logout() {
     if (!_vecino) await db.auth.signOut();
     _vecino = null;
-    document.getElementById('l-pass').value          = '';
-    document.getElementById('l-dni').value           = '';
+    document.getElementById('l-pass').value           = '';
+    document.getElementById('l-dni').value            = '';
     document.getElementById('l-resultados').innerHTML = '';
     document.getElementById('l-msg').innerHTML        = '';
     showScreen('s-login');
+    switchTab('vecino');
   }
 
   async function checkSession() {

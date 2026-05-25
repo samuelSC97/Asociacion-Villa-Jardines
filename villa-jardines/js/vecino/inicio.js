@@ -18,8 +18,9 @@ const VecinoInicio = (() => {
 
     el.innerHTML = `
       <div style="margin-bottom:14px">
-        <div style="font-size:18px;font-weight:700;letter-spacing:-.3px">Hola, ${esc(v.nombre.split(',')[0].trim())} 👋</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px">Mz ${esc(v.mz)} — Lote ${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}</div>
+        <div style="font-size:17px;font-weight:700;letter-spacing:-.3px">Hola 👋</div>
+        <div style="font-size:13px;font-weight:600;margin-top:2px">${esc(v.nombre)}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:1px">Mz ${esc(v.mz)} — Lote ${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}</div>
       </div>
 
       <div class="alert-card ${hayDeuda ? 'alert-red' : 'alert-green'}">
@@ -53,6 +54,8 @@ const VecinoInicio = (() => {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <button class="btn btn-outline" onclick="VecinoApp.tab('faltas')">📋 Mis faltas</button>
         <button class="btn btn-outline" onclick="VecinoApp.tab('pagos')">💰 Mis pagos</button>
+        <button class="btn btn-outline" onclick="VecinoAgua.render()">💧 Rol de Agua</button>
+        <button class="btn btn-outline" onclick="VecinoContactos.render()">📞 Directorio</button>
       </div>`;
   }
   return { render };

@@ -1,5 +1,5 @@
 const AdminApp = (() => {
-  const MOD = { inicio: AdminInicio, asistencia: AdminAsistencia, vecinos: AdminVecinos, pagos: AdminPagos, documentos: AdminDocumentos };
+  const MOD = { inicio: AdminInicio, asistencia: AdminAsistencia, vecinos: AdminVecinos, pagos: AdminPagos, documentos: AdminDocumentos, directorio: AdminDirectorio };
 
   function tab(name) {
     document.querySelectorAll('#admin-nav .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));

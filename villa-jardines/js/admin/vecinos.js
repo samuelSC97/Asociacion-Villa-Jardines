@@ -138,12 +138,13 @@ const AdminVecinos = (() => {
   async function _renderDetalle(id) {
     const el = document.getElementById('admin-body');
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
-    const [{ data: v }, { data: asist }, { data: apoyos }, { data: deudasAnt }, { data: exonerHist }] = await Promise.all([
+    const [{ data: v }, { data: asist }, { data: apoyos }, { data: deudasAnt }, { data: exonerHist }, { data: accesos }] = await Promise.all([
       db.from('vecinos').select('*').eq('id', id).single(),
       db.from('asistencias').select('*,eventos(*),subsanaciones(*)').eq('vecino_id', id).order('created_at', { ascending: false }),
       db.from('apoyos').select('*').eq('vecino_id', id).order('fecha', { ascending: false }),
       db.from('deudas_anteriores').select('*').eq('vecino_id', id).eq('pagado', false).order('anio', { ascending: true }),
-      db.from('exoneracion_historial').select('*').eq('vecino_id', id).order('created_at', { ascending: false }).limit(10)
+      db.from('exoneracion_historial').select('*').eq('vecino_id', id).order('created_at', { ascending: false }).limit(10),
+      db.from('usuarios').select('id,username,dni,activo').eq('vecino_id', id).eq('rol', 'vecino').order('id', { ascending: true })
     ]);
     const faltas     = (asist || []).filter(a => a.estado === 'F');
     const multaTotal = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
@@ -272,7 +273,30 @@ const AdminVecinos = (() => {
             <div class="hist-fecha">${formatFecha(h.fecha_cambio)}${h.nota ? ' · ' + esc(h.nota) : ''}</div>
           </div>
         </div>`).join('')}
-      </div>` : ''}`;
+      </div>` : ''}
+
+      <div class="sec-title no-print">Accesos al sistema</div>
+      <div class="card card-flush no-print">
+        ${(accesos || []).length ? (accesos || []).map(u => `
+          <div class="pago-det-row">
+            <div>
+              <div style="font-size:13px;font-weight:500">${esc(u.username || '—')}</div>
+              <div style="font-size:11px;color:var(--text2)">DNI: ${esc(u.dni)}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="pill ${u.activo ? 'pill-green' : 'pill-gray'}" style="font-size:10px">${u.activo ? 'Activo' : 'Inactivo'}</span>
+              <button class="btn btn-sm btn-outline" style="padding:2px 8px;font-size:11px" onclick="AdminVecinos.toggleAcceso(${u.id},${id},${u.activo})">${u.activo ? 'Desactivar' : 'Activar'}</button>
+            </div>
+          </div>`).join('')
+        : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Sin accesos registrados</div>'}
+      </div>
+      <div class="card no-print" style="margin-top:0">
+        <div class="grid-2">
+          <div class="field"><label>DNI del acceso</label><input type="text" id="acc-dni" maxlength="8" inputmode="numeric" placeholder="12345678"></div>
+          <div class="field"><label>Nombre / descripción</label><input type="text" id="acc-nombre" placeholder="Ej: María (familiar)"></div>
+        </div>
+        <button class="btn btn-dark btn-sm" onclick="AdminVecinos.agregarAcceso(${id})">＋ Agregar acceso</button>
+      </div>`;
   }
 
   function volver()     { _detalle = null; render(); }
@@ -407,7 +431,34 @@ const AdminVecinos = (() => {
     _renderDetalle(id);
   }
 
+  async function agregarAcceso(vecinoId) {
+    const dni    = (document.getElementById('acc-dni').value || '').trim();
+    const nombre = (document.getElementById('acc-nombre').value || '').trim();
+    if (dni.length < 8) { showToast('El DNI debe tener 8 dígitos', 'err'); return; }
+    if (!nombre) { showToast('Ingresa un nombre para este acceso', 'err'); return; }
+    showLoading();
+    const { error } = await db.from('usuarios').insert({
+      dni, username: nombre, rol: 'vecino', vecino_id: vecinoId, activo: true, password_hash: ''
+    });
+    hideLoading();
+    if (error) showToast('Error: ' + error.message, 'err');
+    else { showToast('✓ Acceso agregado'); _renderDetalle(vecinoId); }
+  }
+
+  function toggleAcceso(usuarioId, vecinoId, activo) {
+    Modal.pedir(
+      `¿Confirmas ${activo ? 'desactivar' : 'reactivar'} este acceso al sistema?`,
+      async () => {
+        showLoading();
+        await db.from('usuarios').update({ activo: !activo }).eq('id', usuarioId);
+        hideLoading();
+        showToast(`✓ Acceso ${activo ? 'desactivado' : 'reactivado'}`);
+        _renderDetalle(vecinoId);
+      }
+    );
+  }
+
   return { render, filtrar, ver, ir, volver, nuevoVecino, cancelarNuevo, guardarNuevo,
            verArchivados, reactivar, archivar, setApoyoTipo, updateApoyoTotal,
-           guardarDatos, pagoLibre, registrarApoyo };
+           guardarDatos, pagoLibre, registrarApoyo, agregarAcceso, toggleAcceso };
 })();
