@@ -305,6 +305,39 @@ hr { border: none; border-top: 1px solid var(--bg2); margin: 12px 0; }
   body { background: #fff; }
 }
 
+/* ── HAMBURGER NAV (mobile admin) ── */
+.nav-hamburger { display: none; padding: 5px 9px; font-size: 15px; }
+
+@media (max-width: 540px) {
+  .nav-hamburger { display: inline-flex; }
+
+  #admin-nav {
+    flex-direction: column;
+    overflow: hidden;
+    max-height: 0;
+    border-bottom: none;
+    transition: max-height .2s ease, border-bottom .2s;
+  }
+  #admin-nav.nav-open {
+    max-height: 300px;
+    border-bottom: 1px solid var(--border);
+  }
+  #admin-nav .nav-btn {
+    flex: none;
+    text-align: left;
+    padding: 11px 16px;
+    font-size: 14px;
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    min-width: 0;
+  }
+  #admin-nav .nav-btn.active {
+    border-left-color: var(--text);
+    border-bottom-color: transparent;
+  }
+  #admin-nav .nav-caret { float: right; margin-top: 2px; }
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 380px) {
   .content { padding: 10px 12px; }

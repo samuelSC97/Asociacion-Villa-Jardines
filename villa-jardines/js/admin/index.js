@@ -1,7 +1,12 @@
 const AdminApp = (() => {
   const MOD = { inicio: AdminInicio, asistencia: AdminAsistencia, vecinos: AdminVecinos, pagos: AdminPagos, documentos: AdminDocumentos, directorio: AdminDirectorio };
 
+  function toggleNav() {
+    document.getElementById('admin-nav')?.classList.toggle('nav-open');
+  }
+
   function tab(name) {
+    document.getElementById('admin-nav')?.classList.remove('nav-open');
     document.querySelectorAll('#admin-nav .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     const subBar = document.getElementById('nav-sub-pagos');
     if (subBar) {
@@ -25,5 +30,5 @@ const AdminApp = (() => {
     AdminPagos.sec(sec);
   }
 
-  return { tab, navPago };
+  return { tab, navPago, toggleNav };
 })();

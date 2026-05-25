@@ -1,5 +1,5 @@
 const AdminAsistencia = (() => {
-  let _vecinos = [], _estados = {}, _cuotaAmts = {}, _tipo = 'F';
+  let _vecinos = [], _estados = {}, _cuotaAmts = {}, _tipo = 'A', _nombreSel = 'Asamblea Ordinaria';
   let _eventos = [];
   let _cuotaMes  = new Date().getMonth() + 1;
   let _cuotaAnio = new Date().getFullYear();
@@ -28,11 +28,18 @@ const AdminAsistencia = (() => {
       <div class="card">
         <div class="card-title">Nuevo evento</div>
         <div class="field"><label>Fecha</label><input type="date" id="a-fecha" value="${today()}"></div>
-        <div class="field"><label>Nombre del evento</label><input type="text" id="a-evento" placeholder="Ej: Asamblea ordinaria mayo 2025"></div>
-        <div class="field"><label>Tipo</label>
+        <div class="field"><label>Evento</label>
+          <select id="a-nombre-sel" onchange="AdminAsistencia.onNombreChange()">
+            <option value="Asamblea Ordinaria"    ${_nombreSel==='Asamblea Ordinaria'   ?'selected':''}>Asamblea Ordinaria</option>
+            <option value="Asamblea Extraordinaria" ${_nombreSel==='Asamblea Extraordinaria'?'selected':''}>Asamblea Extraordinaria</option>
+            <option value="Faena"                 ${_nombreSel==='Faena'                ?'selected':''}>Faena</option>
+          </select>
+        </div>
+        <div class="field"><label>Descripción opcional</label><input type="text" id="a-desc" placeholder="Ej: 2ª convocatoria, elección de junta..."></div>
+        <div class="field"><label>Multa por inasistencia</label>
           <div class="tipo-row">
-            <button class="tipo-btn ${_tipo==='F'?'on-F':''}" onclick="AdminAsistencia.setTipo('F')">Faena<small>S/50</small></button>
             <button class="tipo-btn ${_tipo==='A'?'on-A':''}" onclick="AdminAsistencia.setTipo('A')">Asamblea<small>S/25</small></button>
+            <button class="tipo-btn ${_tipo==='F'?'on-F':''}" onclick="AdminAsistencia.setTipo('F')">Faena<small>S/50</small></button>
             <button class="tipo-btn ${_tipo==='I'?'on-I':''}" onclick="AdminAsistencia.setTipo('I')">Importante<small>S/100</small></button>
           </div>
         </div>
@@ -79,24 +86,24 @@ const AdminAsistencia = (() => {
       const amt       = _cuotaAmts[v.id] || 0;
       const exonTotal = v.exonerado === 'total';
       const exonAsam  = v.exonerado === 'asamblea' && _tipo === 'A';
+      const est       = _estados[v.id] || 'P';
       return `
       <div class="asist-item">
-        <div class="avatar" style="width:30px;height:30px;font-size:10px">${initials(v.nombre)}</div>
         <div style="flex:1;min-width:0">
           <div class="asist-name">${esc(v.nombre.split(',')[0].trim())}</div>
-          <div class="asist-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${exonTotal ? ' · Exonerado' : exonAsam ? ' · Exon. asamblea' : ''}</div>
+          <div class="asist-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${exonTotal ? ' · Exonerado' : exonAsam ? ' · Exon.asam' : ''}</div>
         </div>
         <div class="asist-controls">
+          <button class="estado-toggle estado-${est}" onclick="AdminAsistencia.toggleEstado(${v.id})" id="est-${v.id}">${est==='F'?'Falta':'Presente'}</button>
           ${!exonTotal
             ? (pagado
-                ? `<span class="pill pill-green" style="font-size:10px;padding:1px 6px">✓ Pagó</span>`
+                ? `<span class="pill pill-green" style="font-size:10px;padding:1px 6px">✓ S/2</span>`
                 : `<div style="display:flex;align-items:center;gap:3px">
-                    <button class="cuota-toggle ${amt>0?'cuota-pagado':''}" onclick="AdminAsistencia.toggleCuota(${v.id})" id="cuota-${v.id}">${amt>0?'✓':'S/2'}</button>
-                    ${amt>0?`<input type="number" id="cuota-amt-${v.id}" value="${amt}" min="2" step="2" style="width:44px;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;text-align:center;background:var(--card)" oninput="AdminAsistencia.setCuotaAmt(${v.id},this.value)">`:''}
+                    <button class="cuota-toggle ${amt>0?'cuota-pagado':''}" onclick="AdminAsistencia.toggleCuota(${v.id})" id="cuota-${v.id}">${amt>0?'✓ S/'+amt:'S/2'}</button>
+                    ${amt>0?`<input type="number" id="cuota-amt-${v.id}" value="${amt}" min="2" step="2" style="width:40px;font-size:12px;padding:2px 3px;border:1px solid var(--border);border-radius:4px;text-align:center;background:var(--card)" oninput="AdminAsistencia.setCuotaAmt(${v.id},this.value)">`:''}
                   </div>`)
             : `<span style="font-size:10px;color:var(--text3)">—</span>`
           }
-          <button class="estado-toggle estado-${_estados[v.id]||'P'}" onclick="AdminAsistencia.toggleEstado(${v.id})" id="est-${v.id}">${_estados[v.id]==='F'?'Falta':'Presente'}</button>
         </div>
       </div>`;
     }).join('');
@@ -137,9 +144,11 @@ const AdminAsistencia = (() => {
   }
 
   async function guardar() {
-    const fecha  = document.getElementById('a-fecha').value;
-    const nombre = (document.getElementById('a-evento').value || '').trim();
-    if (!fecha || !nombre) { showToast('Completa la fecha y el nombre del evento', 'err'); return; }
+    const fecha      = document.getElementById('a-fecha').value;
+    const nombreSel  = document.getElementById('a-nombre-sel')?.value || _nombreSel;
+    const desc       = (document.getElementById('a-desc')?.value || '').trim();
+    const nombre     = desc ? `${nombreSel} — ${desc}` : nombreSel;
+    if (!fecha) { showToast('Completa la fecha del evento', 'err'); return; }
     showLoading();
 
     const { data: ev, error } = await db.from('eventos').insert({ fecha, nombre, tipo: _tipo }).select().single();
@@ -192,7 +201,7 @@ const AdminAsistencia = (() => {
 
     hideLoading();
     const faltas = _vecinos.filter(v => _estados[v.id] === 'F').length;
-    _estados = {}; _cuotaAmts = {};
+    _estados = {}; _cuotaAmts = {}; _nombreSel = 'Asamblea Ordinaria'; _tipo = 'A';
     showToast(`✓ Guardado — ${faltas} faltas · ${pagando.length} cobros almacén (${mesesTotal} mes${mesesTotal !== 1 ? 'es' : ''})`);
     AdminApp.tab('inicio');
   }
@@ -218,5 +227,19 @@ const AdminAsistencia = (() => {
     render();
   }
 
-  return { render, setTipo, filtrar, marcarTodos, toggleEstado, toggleCuota, setCuotaAmt, navMes, guardar, pedirEliminar };
+  function onNombreChange() {
+    const sel = document.getElementById('a-nombre-sel');
+    if (!sel) return;
+    _nombreSel = sel.value;
+    const nuevoTipo = _nombreSel === 'Faena' ? 'F' : 'A';
+    if (nuevoTipo !== _tipo) {
+      _tipo = nuevoTipo;
+      document.querySelectorAll('#admin-body .tipo-btn').forEach(b => {
+        const m = b.getAttribute('onclick')?.match(/setTipo\('(\w)'\)/);
+        if (m) b.className = `tipo-btn${_tipo === m[1] ? ' on-' + m[1] : ''}`;
+      });
+    }
+  }
+
+  return { render, setTipo, onNombreChange, filtrar, marcarTodos, toggleEstado, toggleCuota, setCuotaAmt, navMes, guardar, pedirEliminar };
 })();

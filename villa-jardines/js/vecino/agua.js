@@ -1,32 +1,29 @@
 const VecinoAgua = (() => {
   const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const REF  = new Date(2026, 0, 1); // Jan 1, 2026 = día 1 del ciclo
+
   let _mes  = new Date().getMonth() + 1;
   let _anio = new Date().getFullYear();
 
-  // Count non-Sundays from Jan 1, 2026 (inclusive) up to and including `date`.
-  // Reference: Jan 1, 2026 = Thursday. First Sunday = Jan 4 (3 days later).
-  // April 1, 2026 = non-Sunday #78 → pair 39 (odd) → AB (verified against known schedule).
-  function _nonSunCount(date) {
-    const ref  = new Date(2026, 0, 1);
-    const days = Math.round((date - ref) / 86400000) + 1;
-    if (days <= 0) return 0;
-    const sundays = days > 3 ? Math.floor((days - 4) / 7) + 1 : 0;
-    return days - sundays;
-  }
-
+  // ciclo perpetuo: 1=nadie, 2=CD, 3=nadie, 0=AB — domingos siguen el mismo ciclo
   function _turno(date) {
-    if (date.getDay() === 0) return null;
-    const pair = Math.ceil(_nonSunCount(date) / 2);
-    return pair % 2 === 1 ? 'AB' : 'CD';
+    const n   = Math.round((date - REF) / 86400000) + 1;
+    const pos = n % 4;
+    if (pos === 2) return 'CD';
+    if (pos === 0) return 'AB';
+    return null;
   }
 
   function render() {
-    const el  = document.getElementById('vecino-body');
-    const hoy = new Date();
-    const daysInMonth = new Date(_anio, _mes, 0).getDate();
-    const isPrev      = !(_anio === 2026 && _mes === 1);
-    const isCurrentMonth = _anio === hoy.getFullYear() && _mes === (hoy.getMonth() + 1);
-    const today = hoy.getDate();
+    const el       = document.getElementById('vecino-body');
+    const hoy      = new Date();
+    const currMes  = hoy.getMonth() + 1;
+    const currAnio = hoy.getFullYear();
+    const daysInMonth    = new Date(_anio, _mes, 0).getDate();
+    const isPrev         = !(_anio === 2026 && _mes === 1);
+    const isCurrentMonth = _anio === currAnio && _mes === currMes;
+    const isNext         = !isCurrentMonth;
+    const todayDay       = hoy.getDate();
 
     const rows = [];
     for (let d = 1; d <= daysInMonth; d++) {
@@ -41,14 +38,14 @@ const VecinoAgua = (() => {
         <div style="display:flex;gap:5px;align-items:center">
           <button class="btn btn-sm btn-outline" onclick="VecinoAgua.navMes(-1)" ${!isPrev?'disabled':''}>‹</button>
           <span style="font-size:13px;font-weight:600;min-width:96px;text-align:center">${MESES_L[_mes-1]} ${_anio}</span>
-          <button class="btn btn-sm btn-outline" onclick="VecinoAgua.navMes(1)">›</button>
+          <button class="btn btn-sm btn-outline" onclick="VecinoAgua.navMes(1)" ${!isNext?'disabled':''}>›</button>
         </div>
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div style="display:flex;gap:14px;padding:7px 12px;font-size:11px;color:var(--text2);border-bottom:1px solid var(--bg2)">
           <span><span style="display:inline-block;width:10px;height:10px;background:#d4edda;border-radius:2px;margin-right:3px;vertical-align:middle"></span>AB</span>
           <span><span style="display:inline-block;width:10px;height:10px;background:#ffecd2;border-radius:2px;margin-right:3px;vertical-align:middle"></span>CD</span>
-          <span><span style="display:inline-block;width:10px;height:10px;background:var(--bg2);border-radius:2px;margin-right:3px;vertical-align:middle"></span>Domingo</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:var(--bg2);border-radius:2px;margin-right:3px;vertical-align:middle"></span>Sin agua</span>
         </div>
         <table style="width:100%;border-collapse:collapse">
           <thead>
@@ -61,14 +58,17 @@ const VecinoAgua = (() => {
           <tbody>
             ${rows.map(r => {
               const isSun = r.dow === 0;
-              const isHoy = isCurrentMonth && r.day === today;
-              const bg    = isSun ? 'var(--bg2)' : r.turno === 'AB' ? '#d4edda' : '#ffecd2';
+              const isHoy = isCurrentMonth && r.day === todayDay;
+              const bg    = r.turno === 'AB' ? '#d4edda'
+                          : r.turno === 'CD' ? '#ffecd2'
+                          : isSun ? 'var(--bg2)' : 'var(--card)';
               const clr   = r.turno === 'AB' ? '#28a745' : '#e67e00';
               return `<tr style="background:${bg}" ${isHoy ? 'id="agua-hoy"' : ''}>
                 <td style="padding:5px 12px;font-size:13px;font-weight:${isHoy?'700':'400'};color:${isHoy?'var(--blue)':'inherit'}">${r.day}${isHoy?' ◀':''}</td>
                 <td style="padding:5px 8px;font-size:12px;color:var(--text2)">${DIAS[r.dow]}</td>
                 <td style="padding:5px 12px;text-align:center">
-                  ${r.turno ? `<span style="font-weight:700;color:${clr};font-size:13px">${r.turno}</span>` : `<span style="color:var(--text3)">—</span>`}
+                  ${r.turno ? `<span style="font-weight:700;color:${clr};font-size:13px">${r.turno}</span>`
+                             : `<span style="color:var(--text3)">—</span>`}
                 </td>
               </tr>`;
             }).join('')}
@@ -98,10 +98,16 @@ const VecinoAgua = (() => {
   }
 
   function navMes(d) {
+    const hoy = new Date();
     _mes += d;
     if (_mes > 12) { _mes = 1;  _anio++; }
     if (_mes < 1)  { _mes = 12; _anio--; }
     if (_anio < 2026 || (_anio === 2026 && _mes < 1)) { _mes = 1; _anio = 2026; }
+    const currMes  = hoy.getMonth() + 1;
+    const currAnio = hoy.getFullYear();
+    if (_anio > currAnio || (_anio === currAnio && _mes > currMes)) {
+      _mes = currMes; _anio = currAnio;
+    }
     render();
   }
 
