@@ -61,7 +61,7 @@ const VecinoAgua = (() => {
               const isHoy = isCurrentMonth && r.day === todayDay;
               const bg    = r.turno === 'AB' ? '#d4edda'
                           : r.turno === 'CD' ? '#ffecd2'
-                          : isSun ? 'var(--bg2)' : 'var(--card)';
+                          : 'var(--card)';
               const clr   = r.turno === 'AB' ? '#28a745' : '#e67e00';
               return `<tr style="background:${bg}" ${isHoy ? 'id="agua-hoy"' : ''}>
                 <td style="padding:5px 12px;font-size:13px;font-weight:${isHoy?'700':'400'};color:${isHoy?'var(--blue)':'inherit'}">${r.day}${isHoy?' ◀':''}</td>
