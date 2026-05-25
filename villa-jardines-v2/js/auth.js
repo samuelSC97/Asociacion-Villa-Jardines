@@ -17,7 +17,7 @@ const Auth = (() => {
     showLoading();
     const { data } = await db.from('usuarios').select('*').eq('username', user).eq('password_hash', pass).eq('rol', 'admin').single();
     hideLoading();
-    if (data) { showScreen('s-admin'); AdminApp.tab('inicio'); }
+    if (data) { showScreen('s-admin'); AdminApp.tab('inicio'); AdminCambiarPass && setTimeout(() => AdminCambiarPass.renderForm(), 800); }
     else { document.getElementById('l-msg').innerHTML = '<div class="msg msg-err">Usuario o contraseña incorrecta</div>'; }
   }
 

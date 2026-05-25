@@ -1,0 +1,25 @@
+{
+  "name": "Villa Jardines",
+  "short_name": "VillaJardines",
+  "description": "Sistema de gestión para la Asociación de Vecinos Villa Jardines — Arequipa, Perú",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#7c5cbf",
+  "orientation": "portrait-primary",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,17 +1,28 @@
 const AdminAsistencia = (() => {
   let _vecinos = [], _estados = {}, _cuotas = {}, _tipo = 'F';
-  let _eventos = [];
+  let _eventos = [], _statsMap = {};
 
   async function render() {
     const el = document.getElementById('admin-body');
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
     const [{ data: v }, { data: ev }] = await Promise.all([
       db.from('vecinos').select('*').order('mz').order('lote'),
-      db.from('eventos').select('*').order('fecha', { ascending: false }).limit(20)
+      db.from('eventos').select('*').order('fecha', { ascending: false }).limit(30)
     ]);
     _vecinos = v || [];
     _eventos = ev || [];
     if (!Object.keys(_estados).length) _vecinos.forEach(v => { _estados[v.id] = 'P'; _cuotas[v.id] = false; });
+
+    // Cargar estadísticas de asistencia para los eventos mostrados
+    if (_eventos.length) {
+      const evIds = _eventos.map(e => e.id);
+      const { data: stats } = await db.from('asistencias').select('evento_id,estado').in('evento_id', evIds);
+      _statsMap = {};
+      (stats || []).forEach(s => {
+        if (!_statsMap[s.evento_id]) _statsMap[s.evento_id] = { P: 0, F: 0, J: 0 };
+        _statsMap[s.evento_id][s.estado] = (_statsMap[s.evento_id][s.estado] || 0) + 1;
+      });
+    }
     _draw();
   }
 
@@ -46,14 +57,31 @@ const AdminAsistencia = (() => {
       ${_eventos.length ? `
       <div class="sec-title">Eventos registrados</div>
       <div class="card card-flush">
-        ${_eventos.map(ev => `
+        ${_eventos.map(ev => {
+          const s = _statsMap[ev.id] || { P: 0, F: 0, J: 0 };
+          const total = s.P + s.F + s.J;
+          const presentes = s.P + s.J;
+          const pct = total > 0 ? Math.round(presentes / total * 100) : 0;
+          return `
           <div class="hist-row">
-            <div class="hist-left">
+            <div class="hist-left" style="flex:1">
               <div class="hist-evento">${ev.nombre}</div>
               <div class="hist-fecha">${formatFecha(ev.fecha)} · <span class="${tipoColor(ev.tipo)} pill" style="font-size:10px;padding:1px 6px">${tipoLabel(ev.tipo)} S/${MULTAS[ev.tipo]}</span></div>
+              ${total > 0 ? `
+              <div class="asist-stats-row">
+                <span class="asist-stat-ok">✓ ${presentes} presentes</span>
+                <span class="asist-stat-sep">·</span>
+                <span class="asist-stat-err">✗ ${s.F} faltas</span>
+                <span class="asist-stat-sep">·</span>
+                <span class="asist-stat-pct">${pct}% asistencia</span>
+              </div>
+              <div class="asist-progress">
+                <div class="asist-progress-fill" style="width:${pct}%"></div>
+              </div>` : ''}
             </div>
             <button class="btn btn-sm btn-danger" onclick="AdminAsistencia.pedirEliminar(${ev.id},'${ev.nombre.replace(/'/g,"\\'")}')">Eliminar</button>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>` : ''}`;
     _renderLista('');
   }
@@ -118,7 +146,6 @@ const AdminAsistencia = (() => {
 
   async function eliminarEvento(id) {
     showLoading();
-    // Eliminar subsanaciones relacionadas
     const { data: asists } = await db.from('asistencias').select('id').eq('evento_id', id);
     if (asists?.length) {
       const ids = asists.map(a => a.id);

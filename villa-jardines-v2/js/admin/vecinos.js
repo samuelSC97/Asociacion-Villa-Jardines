@@ -1,5 +1,5 @@
 const AdminVecinos = (() => {
-  let _todos = [], _faltasMap = {}, _detalle = null, _apoyoTipo = 'Faena extra', _anio = new Date().getFullYear();
+  let _todos = [], _faltasMap = {}, _detalle = null, _apoyoTipo = 'Faena extra', _anio = new Date().getFullYear(), _mzFilter = '';
 
   async function render() {
     if (_detalle) { await _renderDetalle(_detalle); return; }
@@ -15,11 +15,26 @@ const AdminVecinos = (() => {
     _renderLista('');
   }
 
+  function filtrarMz(mz) {
+    _mzFilter = _mzFilter === mz ? '' : mz;
+    _renderLista(document.getElementById('v-filter')?.value || '');
+  }
+
   function _renderLista(q) {
     const el = document.getElementById('admin-body');
-    const fil = _todos.filter(v => !q || v.nombre.toLowerCase().includes(q.toLowerCase()) || (v.dni && v.dni.includes(q)) || v.mz.toLowerCase() === q.toLowerCase());
+    const fil = _todos.filter(v => {
+      const matchQ = !q || v.nombre.toLowerCase().includes(q.toLowerCase()) || (v.dni && v.dni.includes(q));
+      const matchMz = !_mzFilter || v.mz === _mzFilter;
+      return matchQ && matchMz;
+    });
     el.innerHTML = `
-      <div class="search-bar"><input type="text" id="v-filter" placeholder="Buscar nombre, DNI, Manzana..." oninput="AdminVecinos.filtrar(this.value)" value="${q}"></div>
+      <div class="search-bar"><input type="text" id="v-filter" placeholder="Buscar nombre o DNI..." oninput="AdminVecinos.filtrar(this.value)" value="${q}"></div>
+      <div class="mz-filter-row">
+        <span style="font-size:11px;color:var(--text2);margin-right:4px">Manzana:</span>
+        ${['A','B','C','D'].map(mz => `<button class="btn btn-sm ${_mzFilter===mz?'btn-dark':'btn-outline'}" onclick="AdminVecinos.filtrarMz('${mz}')">${mz}</button>`).join('')}
+        ${_mzFilter ? `<button class="btn btn-sm btn-outline" onclick="AdminVecinos.filtrarMz('')" style="color:var(--text2)">✕ Limpiar</button>` : ''}
+        <span style="font-size:11px;color:var(--text3);margin-left:auto">${fil.length} vecino${fil.length!==1?'s':''}</span>
+      </div>
       <div class="card card-flush">
         ${fil.map(v => {
           const nf = _faltasMap[v.id] || 0;
@@ -216,5 +231,5 @@ const AdminVecinos = (() => {
     _renderDetalle(id);
   }
 
-  return { render, filtrar, ver, volver, setApoyoTipo, cambiarAnio, guardarDatos, pagoLibre, pagarCuotaSocial, registrarApoyo };
+  return { render, filtrar, filtrarMz, ver, volver, setApoyoTipo, cambiarAnio, guardarDatos, pagoLibre, pagarCuotaSocial, registrarApoyo };
 })();
