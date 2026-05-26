@@ -1,5 +1,5 @@
 const AdminAsistencia = (() => {
-  let _vecinos = [], _estados = {}, _cuotaAmts = {}, _tipo = 'A', _nombreSel = 'Asamblea Ordinaria', _nombreCustom = '';
+  let _vecinos = [], _estados = {}, _cuotaAmts = {}, _tipo = 'A', _nombreSel = 'Asamblea Ordinaria', _nombreCustom = '', _fecha = '';
   let _eventos = [];
   const CUOTA_MIN_MES = 2, CUOTA_MIN_ANIO = 2025;
   let _cuotaMes  = new Date().getMonth() + 1;
@@ -28,7 +28,7 @@ const AdminAsistencia = (() => {
     el.innerHTML = `
       <div class="card">
         <div class="card-title">Nuevo evento</div>
-        <div class="field"><label>Fecha</label><input type="date" id="a-fecha" value="${today()}"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="a-fecha" value="${_fecha || today()}"></div>
         <div class="field"><label>Evento</label>
           <select id="a-nombre-sel" onchange="AdminAsistencia.onNombreChange()">
             <option value="Asamblea Ordinaria"      ${_nombreSel==='Asamblea Ordinaria'     ?'selected':''}>Asamblea Ordinaria</option>
@@ -121,6 +121,7 @@ const AdminAsistencia = (() => {
 
   function setTipo(t) {
     _nombreCustom = document.getElementById('a-nombre-custom')?.value || _nombreCustom;
+    _fecha = document.getElementById('a-fecha')?.value || _fecha;
     _tipo = t; _draw();
   }
   function filtrar(q) { _renderLista(q); }
@@ -220,7 +221,7 @@ const AdminAsistencia = (() => {
 
     hideLoading();
     const faltas = _vecinos.filter(v => _estados[v.id] === 'F').length;
-    _estados = {}; _cuotaAmts = {}; _nombreSel = 'Asamblea Ordinaria'; _nombreCustom = ''; _tipo = 'A';
+    _estados = {}; _cuotaAmts = {}; _nombreSel = 'Asamblea Ordinaria'; _nombreCustom = ''; _fecha = ''; _tipo = 'A';
     showToast(`✓ Guardado — ${faltas} faltas · ${pagando.length} cobros almacén (${mesesTotal} mes${mesesTotal !== 1 ? 'es' : ''})`);
     AdminApp.tab('inicio');
   }
