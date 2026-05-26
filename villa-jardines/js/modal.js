@@ -18,8 +18,9 @@ const Modal = (() => {
     const { error } = await db.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pass });
     hideLoading();
     if (error) { document.getElementById('modal-err').textContent = 'Contraseña incorrecta'; return; }
+    const cb = _callback;
     cancelar();
-    if (_callback) _callback();
+    if (cb) cb();
   }
 
   function cancelar() {
