@@ -312,77 +312,116 @@ const AdminVecinos = (() => {
 
   function exportar() {
     if (!_detalleData) return;
-    const { v, asist, deudasAnt } = _detalleData;
+    _exportarHtml(_detalleData.v, _detalleData.asist, _detalleData.deudasAnt);
+  }
+
+  function _exportarHtml(v, asist, deudasAnt) {
     const faltas      = asist.filter(a => a.estado === 'F');
     const presentes   = asist.filter(a => a.estado === 'P').length;
     const subsanadas  = asist.filter(a => a.estado === 'J').length;
+    const exoneradas  = asist.filter(a => a.estado === 'E').length;
     const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
     const multaDeudas = deudasAnt.reduce((s, d) => s + parseFloat(d.monto), 0);
     const multaTotal  = multaFaltas + multaDeudas;
-    let n = 0;
-    const filas = [
-      ...deudasAnt.map(d => {
-        n++;
-        return `<tr style="background:#fff0f0">
-          <td>${n}</td>
-          <td>Deuda acumulada ${d.anio}${d.nota ? ' — ' + d.nota : ''}</td>
-          <td>—</td>
-          <td style="color:#b91c1c;font-weight:600">Pendiente</td>
-          <td style="color:#b91c1c;font-weight:600">S/${parseFloat(d.monto).toFixed(2)}</td>
-        </tr>`;
-      }),
-      ...asist.map(a => {
-        n++;
-        const tipo    = a.eventos?.tipo;
-        const multa   = a.estado === 'F' ? (MULTAS[tipo] || 0) : 0;
-        const labels  = { P: 'Presente', F: 'Falta', J: 'Subsanado', E: 'Exonerado' };
-        const color   = a.estado === 'F' ? '#b91c1c' : a.estado === 'J' ? '#b45309' : a.estado === 'E' ? '#1d4ed8' : '#166534';
-        return `<tr>
-          <td>${n}</td>
-          <td>${a.eventos?.nombre || 'Evento'}</td>
-          <td>${formatFecha(a.eventos?.fecha)}</td>
-          <td style="color:${color};font-weight:600">${labels[a.estado] || a.estado}</td>
-          <td style="color:${color}">${multa > 0 ? 'S/' + multa.toFixed(2) : '—'}</td>
-        </tr>`;
-      })
-    ].join('');
+
+    const cfg = {
+      P: { label: 'Presente',  bg: '#dcfce7', fg: '#166534' },
+      F: { label: 'Falta',     bg: '#fee2e2', fg: '#b91c1c' },
+      J: { label: 'Subsanado', bg: '#fef9c3', fg: '#854d0e' },
+      E: { label: 'Exonerado', bg: '#ffedd5', fg: '#c2410c' }
+    };
+
+    // Deudas anteriores block
+    const deudasHtml = deudasAnt.length ? `
+      <div class="sec-lbl">Deudas anteriores al sistema</div>
+      <table class="dt"><tbody>
+        ${deudasAnt.map(d => `<tr>
+          <td>${d.anio}${d.nota ? ' — ' + d.nota : ''}</td>
+          <td style="text-align:right;color:#b91c1c;font-weight:700">S/${parseFloat(d.monto).toFixed(2)}</td>
+        </tr>`).join('')}
+      </tbody></table>` : '';
+
+    // Group by year, sorted asc within each year
+    const byYear = {};
+    asist.forEach(a => {
+      const yr = (a.eventos?.fecha || '').slice(0, 4);
+      if (!yr) return;
+      (byYear[yr] = byYear[yr] || []).push(a);
+    });
+    Object.values(byYear).forEach(arr => arr.sort((a, b) => (a.eventos?.fecha || '').localeCompare(b.eventos?.fecha || '')));
+
+    const yearTables = Object.keys(byYear).sort().map(yr => {
+      const evs = byYear[yr];
+      const faltasAnio = evs.filter(a => a.estado === 'F').length;
+      const multa = evs.filter(a => a.estado === 'F').reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+      const heads = evs.map(a => {
+        const f = a.eventos?.fecha || '';
+        const dd = parseInt(f.slice(8, 10));
+        const mm = parseInt(f.slice(5, 7));
+        const nom = (a.eventos?.nombre || '');
+        const corto = nom.length > 22 ? nom.slice(0, 20) + '…' : nom;
+        return `<th><div class="ed">${dd} ${MESES[mm - 1] || ''}</div><div class="en">${corto}</div></th>`;
+      }).join('');
+      const cells = evs.map(a => {
+        const c = cfg[a.estado] || { label: a.estado, bg: '#f3f4f6', fg: '#374151' };
+        return `<td style="background:${c.bg};color:${c.fg};font-weight:700;text-align:center">${c.label}</td>`;
+      }).join('');
+      return `
+        <div class="yr-block">
+          <div class="yr-lbl">${yr}</div>
+          <div class="tw">
+            <table class="yt">
+              <thead><tr>${heads}<th class="tot">Total F</th><th class="tot">S/</th></tr></thead>
+              <tbody><tr>${cells}
+                <td class="tot" style="${faltasAnio > 0 ? 'color:#b91c1c;font-weight:700' : 'color:#6b7280'}">${faltasAnio || '—'}</td>
+                <td class="tot" style="${multa > 0 ? 'color:#b91c1c;font-weight:700' : 'color:#6b7280'}">${multa > 0 ? multa : '—'}</td>
+              </tr></tbody>
+            </table>
+          </div>
+        </div>`;
+    }).join('');
+
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <title>Historial — ${v.nombre}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#111}
 .aso{font-size:15px;font-weight:700;margin-bottom:2px}
-.sub{font-size:11px;color:#555;margin-bottom:16px}
-.info p{margin-bottom:3px}
-.info{margin-bottom:14px}
-.resumen{display:flex;gap:24px;margin-bottom:16px;padding:10px 14px;background:#f4f4f4;border-radius:6px}
+.cab{font-size:11px;color:#555;margin-bottom:14px}
+.inf p{margin-bottom:3px}.inf{margin-bottom:14px}
+.res{display:flex;gap:22px;margin-bottom:18px;padding:10px 14px;background:#f4f4f4;border-radius:6px;flex-wrap:wrap}
 .rv{font-size:18px;font-weight:700}.rl{font-size:10px;color:#666}
-table{width:100%;border-collapse:collapse;margin-top:4px}
-th,td{border:1px solid #ddd;padding:6px 9px;text-align:left;font-size:11px}
-th{background:#f0f0f0;font-weight:700}
-tr:nth-child(even){background:#fafafa}
-tfoot td{font-weight:700;background:#f0f0f0}
-@media print{body{padding:0}}
+.sec-lbl{font-size:12px;font-weight:700;margin:16px 0 5px;color:#333;border-bottom:1px solid #e5e7eb;padding-bottom:3px}
+.dt{border-collapse:collapse;width:auto;margin-bottom:4px}
+.dt td{padding:3px 10px 3px 0;font-size:11px;border:none}
+.yr-block{margin-bottom:22px}
+.yr-lbl{font-size:13px;font-weight:700;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:3px;margin-bottom:6px}
+.tw{overflow-x:auto}
+.yt{border-collapse:collapse;white-space:nowrap}
+.yt th,.yt td{border:1px solid #d1d5db;padding:5px 8px;font-size:11px}
+.yt thead th{background:#f0f4f8;text-align:center;font-weight:600}
+.ed{font-weight:700;font-size:12px;text-align:center}
+.en{font-size:9px;color:#555;margin-top:1px;text-align:center;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+.tot{background:#f0f0f0;font-weight:700;text-align:center;min-width:44px}
+@media print{body{padding:8px}.tw{overflow:visible}}
 </style></head><body>
 <div class="aso">Asociación de Vecinos Villa Jardines</div>
-<div class="sub">Arequipa, Perú &nbsp;·&nbsp; Emitido el ${formatFecha(today())}</div>
-<div class="info">
+<div class="cab">Arequipa, Perú &nbsp;·&nbsp; Emitido el ${formatFecha(today())}</div>
+<div class="inf">
   <p><strong>Vecino:</strong> ${v.nombre}</p>
-  <p><strong>Manzana:</strong> ${v.mz} &nbsp;·&nbsp; <strong>Lote:</strong> ${v.lote}${v.cargo ? ' &nbsp;·&nbsp; <strong>Cargo:</strong> ' + v.cargo : ''}</p>
+  <p><strong>Mz:</strong> ${v.mz} &nbsp;·&nbsp; <strong>Lote:</strong> ${v.lote}${v.cargo ? ' &nbsp;·&nbsp; <strong>Cargo:</strong> ' + v.cargo : ''}</p>
 </div>
-<div class="resumen">
+<div class="res">
   <div><div class="rv" style="color:#b91c1c">S/${multaTotal.toFixed(2)}</div><div class="rl">Deuda total</div></div>
   <div><div class="rv" style="color:#166534">${presentes}</div><div class="rl">Presentes</div></div>
   <div><div class="rv" style="color:#b91c1c">${faltas.length}</div><div class="rl">Faltas</div></div>
-  <div><div class="rv" style="color:#b45309">${subsanadas}</div><div class="rl">Subsanadas</div></div>
+  <div><div class="rv" style="color:#854d0e">${subsanadas}</div><div class="rl">Subsanadas</div></div>
+  ${exoneradas > 0 ? `<div><div class="rv" style="color:#c2410c">${exoneradas}</div><div class="rl">Exoneradas</div></div>` : ''}
 </div>
-<table>
-  <thead><tr><th>N°</th><th>Evento / Descripción</th><th>Fecha</th><th>Estado</th><th>Multa S/</th></tr></thead>
-  <tbody>${filas || '<tr><td colspan="5" style="text-align:center;color:#666;padding:12px">Sin registros</td></tr>'}</tbody>
-  <tfoot><tr><td colspan="4" style="text-align:right">Total deuda pendiente:</td><td>S/${multaTotal.toFixed(2)}</td></tr></tfoot>
-</table>
+${deudasHtml}
+${yearTables || '<div style="color:#6b7280;padding:12px 0">Sin registros de asistencia.</div>'}
 </body></html>`;
-    const w = window.open('', '_blank', 'width=750,height=650');
+    const w = window.open('', '_blank', 'width=820,height=720');
     if (w) { w.document.write(html); w.document.close(); w.print(); }
   }
 
