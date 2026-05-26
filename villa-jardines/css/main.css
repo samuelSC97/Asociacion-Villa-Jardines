@@ -239,6 +239,16 @@ input[type="checkbox"] { width: auto; margin: 0; }
 .tabla tr:last-child td { border-bottom: none; }
 .tabla tr:hover td { background: var(--bg); }
 
+/* ── FALTAS MATRIX TABLE ── */
+.tabla-faltas { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tabla-faltas th, .tabla-faltas td { padding: 4px 3px; border: 1px solid var(--border); vertical-align: middle; }
+.tf-col-name { position: sticky; left: 0; background: var(--card); z-index: 2; min-width: 90px; max-width: 130px; font-size: 11px; padding: 4px 6px !important; }
+.tf-col-ev { min-width: 32px; text-align: center; font-size: 10px; font-weight: 600; background: var(--bg2); }
+.tf-col-tot { min-width: 30px; text-align: center; font-weight: 700; font-size: 11px; background: var(--bg2); }
+.tabla-faltas thead .tf-col-name { z-index: 3; background: var(--bg2); }
+.tabla-faltas tbody tr:hover td { background: var(--bg); }
+.tabla-faltas tbody tr:hover .tf-col-name { background: var(--bg); }
+
 /* ── PDF ITEM ── */
 .pdf-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--bg2); }
 .pdf-item:last-child { border-bottom: none; }
