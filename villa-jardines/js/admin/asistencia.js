@@ -257,8 +257,9 @@ const AdminAsistencia = (() => {
       await db.from('subsanaciones').delete().in('asistencia_id', ids);
       await db.from('asistencias').delete().eq('evento_id', id);
     }
-    await db.from('eventos').delete().eq('id', id);
+    const { error: errDel } = await db.from('eventos').delete().eq('id', id);
     hideLoading();
+    if (errDel) { showToast('Error al eliminar: ' + errDel.message, 'err'); return; }
     showToast('✓ Evento eliminado');
     render();
   }
