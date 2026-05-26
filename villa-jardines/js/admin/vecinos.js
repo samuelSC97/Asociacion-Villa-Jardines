@@ -1,6 +1,6 @@
 const AdminVecinos = (() => {
   let _todos = [], _faltasMap = {}, _detalle = null, _apoyoTipo = 'Faena extra', _anio = new Date().getFullYear();
-  let _archivadosCount = 0, _creandoNuevo = false, _editandoAsist = null;
+  let _archivadosCount = 0, _creandoNuevo = false, _editandoAsist = null, _detalleData = null;
 
   async function render() {
     if (_detalle)     { await _renderDetalle(_detalle); return; }
@@ -146,6 +146,7 @@ const AdminVecinos = (() => {
       db.from('exoneracion_historial').select('*').eq('vecino_id', id).order('created_at', { ascending: false }).limit(10),
       db.from('usuarios').select('id,username,dni,activo').eq('vecino_id', id).eq('rol', 'vecino').order('id', { ascending: true })
     ]);
+    _detalleData = { v, asist: asist || [], deudasAnt: deudasAnt || [] };
     const faltas      = (asist || []).filter(a => a.estado === 'F');
     const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
     const multaDeudas = (deudasAnt || []).reduce((s, d) => s + parseFloat(d.monto), 0);
@@ -223,22 +224,19 @@ const AdminVecinos = (() => {
         <button class="btn btn-dark" onclick="AdminVecinos.registrarApoyo(${id})">🪙 Registrar apoyo</button>
       </div>
 
-      ${(deudasAnt || []).length ? `
-      <div class="sec-title">Deudas anteriores sin pagar</div>
-      <div class="card card-flush">
-        ${(deudasAnt || []).map(d => `<div class="pago-det-row">
-          <div>
-            <div style="font-size:13px;font-weight:500">Deuda anterior ${d.anio}${d.nota ? ' — ' + esc(d.nota) : ''}</div>
-          </div>
-          <span class="pill pill-red">S/${d.monto}</span>
-        </div>`).join('')}
-      </div>` : ''}
-
       <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 7px">
         <div class="sec-title" style="margin:0">Historial de asistencia</div>
-        <button class="btn btn-sm btn-outline no-print" onclick="window.print()">🖨️ Exportar PDF</button>
+        <button class="btn btn-sm btn-outline no-print" onclick="AdminVecinos.exportar()">🖨️ Exportar PDF</button>
       </div>
       <div class="card card-flush">
+        ${(deudasAnt || []).map(d => `
+          <div class="hist-row">
+            <div class="hist-left">
+              <div class="hist-evento" style="color:var(--red);font-weight:600">Deuda acumulada ${d.anio}${d.nota ? ' — ' + esc(d.nota) : ''}</div>
+              <div class="hist-fecha" style="color:var(--text2)">Pendiente de pago · anterior al sistema</div>
+            </div>
+            <div style="flex-shrink:0"><span class="pill pill-red">S/${d.monto}</span></div>
+          </div>`).join('')}
         ${(asist || []).map(a => {
           const sub   = a.subsanaciones?.[0];
           const tipo  = a.eventos?.tipo;
@@ -260,7 +258,7 @@ const AdminVecinos = (() => {
               <button class="btn btn-sm btn-outline no-print" style="font-size:10px;padding:1px 7px" onclick="AdminVecinos.iniciarEdicion(${a.id},'${a.estado}',${id},${subId},${apoId})">Editar</button>
             </div>
           </div>`;
-        }).join('') || '<div style="color:var(--text2);font-size:13px;padding:12px 0">Sin registros de asistencia</div>'}
+        }).join('') || (!(deudasAnt || []).length ? '<div style="color:var(--text2);font-size:13px;padding:12px 0">Sin registros de asistencia</div>' : '')}
       </div>
 
       ${apoyosHist.length ? `
@@ -311,6 +309,83 @@ const AdminVecinos = (() => {
   }
 
   function volver()     { _detalle = null; render(); }
+
+  function exportar() {
+    if (!_detalleData) return;
+    const { v, asist, deudasAnt } = _detalleData;
+    const faltas      = asist.filter(a => a.estado === 'F');
+    const presentes   = asist.filter(a => a.estado === 'P').length;
+    const subsanadas  = asist.filter(a => a.estado === 'J').length;
+    const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+    const multaDeudas = deudasAnt.reduce((s, d) => s + parseFloat(d.monto), 0);
+    const multaTotal  = multaFaltas + multaDeudas;
+    let n = 0;
+    const filas = [
+      ...deudasAnt.map(d => {
+        n++;
+        return `<tr style="background:#fff0f0">
+          <td>${n}</td>
+          <td>Deuda acumulada ${d.anio}${d.nota ? ' — ' + d.nota : ''}</td>
+          <td>—</td>
+          <td style="color:#b91c1c;font-weight:600">Pendiente</td>
+          <td style="color:#b91c1c;font-weight:600">S/${parseFloat(d.monto).toFixed(2)}</td>
+        </tr>`;
+      }),
+      ...asist.map(a => {
+        n++;
+        const tipo    = a.eventos?.tipo;
+        const multa   = a.estado === 'F' ? (MULTAS[tipo] || 0) : 0;
+        const labels  = { P: 'Presente', F: 'Falta', J: 'Subsanado', E: 'Exonerado' };
+        const color   = a.estado === 'F' ? '#b91c1c' : a.estado === 'J' ? '#b45309' : a.estado === 'E' ? '#1d4ed8' : '#166534';
+        return `<tr>
+          <td>${n}</td>
+          <td>${a.eventos?.nombre || 'Evento'}</td>
+          <td>${formatFecha(a.eventos?.fecha)}</td>
+          <td style="color:${color};font-weight:600">${labels[a.estado] || a.estado}</td>
+          <td style="color:${color}">${multa > 0 ? 'S/' + multa.toFixed(2) : '—'}</td>
+        </tr>`;
+      })
+    ].join('');
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>Historial — ${v.nombre}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#111}
+.aso{font-size:15px;font-weight:700;margin-bottom:2px}
+.sub{font-size:11px;color:#555;margin-bottom:16px}
+.info p{margin-bottom:3px}
+.info{margin-bottom:14px}
+.resumen{display:flex;gap:24px;margin-bottom:16px;padding:10px 14px;background:#f4f4f4;border-radius:6px}
+.rv{font-size:18px;font-weight:700}.rl{font-size:10px;color:#666}
+table{width:100%;border-collapse:collapse;margin-top:4px}
+th,td{border:1px solid #ddd;padding:6px 9px;text-align:left;font-size:11px}
+th{background:#f0f0f0;font-weight:700}
+tr:nth-child(even){background:#fafafa}
+tfoot td{font-weight:700;background:#f0f0f0}
+@media print{body{padding:0}}
+</style></head><body>
+<div class="aso">Asociación de Vecinos Villa Jardines</div>
+<div class="sub">Arequipa, Perú &nbsp;·&nbsp; Emitido el ${formatFecha(today())}</div>
+<div class="info">
+  <p><strong>Vecino:</strong> ${v.nombre}</p>
+  <p><strong>Manzana:</strong> ${v.mz} &nbsp;·&nbsp; <strong>Lote:</strong> ${v.lote}${v.cargo ? ' &nbsp;·&nbsp; <strong>Cargo:</strong> ' + v.cargo : ''}</p>
+</div>
+<div class="resumen">
+  <div><div class="rv" style="color:#b91c1c">S/${multaTotal.toFixed(2)}</div><div class="rl">Deuda total</div></div>
+  <div><div class="rv" style="color:#166534">${presentes}</div><div class="rl">Presentes</div></div>
+  <div><div class="rv" style="color:#b91c1c">${faltas.length}</div><div class="rl">Faltas</div></div>
+  <div><div class="rv" style="color:#b45309">${subsanadas}</div><div class="rl">Subsanadas</div></div>
+</div>
+<table>
+  <thead><tr><th>N°</th><th>Evento / Descripción</th><th>Fecha</th><th>Estado</th><th>Multa S/</th></tr></thead>
+  <tbody>${filas || '<tr><td colspan="5" style="text-align:center;color:#666;padding:12px">Sin registros</td></tr>'}</tbody>
+  <tfoot><tr><td colspan="4" style="text-align:right">Total deuda pendiente:</td><td>S/${multaTotal.toFixed(2)}</td></tr></tfoot>
+</table>
+</body></html>`;
+    const w = window.open('', '_blank', 'width=750,height=650');
+    if (w) { w.document.write(html); w.document.close(); w.print(); }
+  }
+
   function setApoyoTipo(t) {
     _apoyoTipo = t;
     document.querySelectorAll('#admin-body .chip-row .chip').forEach(c => c.classList.toggle('on', c.textContent.trim() === t));
@@ -582,5 +657,6 @@ const AdminVecinos = (() => {
   return { render, filtrar, ver, ir, volver, nuevoVecino, cancelarNuevo, guardarNuevo,
            verArchivados, reactivar, archivar, setApoyoTipo, updateApoyoTotal,
            guardarDatos, pagoLibre, registrarApoyo, agregarAcceso, toggleAcceso,
-           iniciarEdicion, cancelarEdit, pedirConfirmEdit, pedirConfirmEditTarget, ejecutarEdit };
+           iniciarEdicion, cancelarEdit, pedirConfirmEdit, pedirConfirmEditTarget, ejecutarEdit,
+           exportar };
 })();
