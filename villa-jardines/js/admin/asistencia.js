@@ -188,7 +188,13 @@ const AdminAsistencia = (() => {
       if (esExon) estado = 'E';
       return { vecino_id: v.id, evento_id: ev.id, estado };
     });
-    await db.from('asistencias').insert(rows);
+    const { error: errAsist } = await db.from('asistencias').insert(rows);
+    if (errAsist) {
+      await db.from('eventos').delete().eq('id', ev.id);
+      hideLoading();
+      showToast('Error al guardar asistencias: ' + errAsist.message, 'err');
+      return;
+    }
 
     const pagando = _vecinos.filter(v => (_cuotaAmts[v.id] || 0) > 0);
     let mesesTotal = 0;
