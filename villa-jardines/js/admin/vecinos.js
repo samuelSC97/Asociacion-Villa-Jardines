@@ -146,9 +146,11 @@ const AdminVecinos = (() => {
       db.from('exoneracion_historial').select('*').eq('vecino_id', id).order('created_at', { ascending: false }).limit(10),
       db.from('usuarios').select('id,username,dni,activo').eq('vecino_id', id).eq('rol', 'vecino').order('id', { ascending: true })
     ]);
-    const faltas     = (asist || []).filter(a => a.estado === 'F');
-    const multaTotal = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
-    const guardadito = (apoyos || []).filter(a => a.estado === 'guardadito').reduce((s, a) => s + parseFloat(a.monto), 0);
+    const faltas      = (asist || []).filter(a => a.estado === 'F');
+    const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+    const multaDeudas = (deudasAnt || []).reduce((s, d) => s + parseFloat(d.monto), 0);
+    const multaTotal  = multaFaltas + multaDeudas;
+    const guardadito  = (apoyos || []).filter(a => a.estado === 'guardadito').reduce((s, a) => s + parseFloat(a.monto), 0);
     const apoyosHist = (apoyos || []).filter(a => a.estado !== 'guardadito');
 
     el.innerHTML = `

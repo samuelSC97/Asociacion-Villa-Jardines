@@ -3,14 +3,17 @@ const VecinoInicio = (() => {
     const el = document.getElementById('vecino-body');
     const v  = Auth.getVecino();
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
-    const [{ data: faltas }, { data: guard }, { data: agenda }, { data: otrosPagos }, { data: misPagosOtros }] = await Promise.all([
+    const [{ data: faltas }, { data: guard }, { data: agenda }, { data: otrosPagos }, { data: misPagosOtros }, { data: deudasAnt }] = await Promise.all([
       db.from('asistencias').select('*,eventos(tipo)').eq('vecino_id', v.id).eq('estado', 'F'),
       db.from('apoyos').select('monto').eq('vecino_id', v.id).eq('estado', 'guardadito'),
       db.from('agenda_proxima').select('*').eq('activa', true).lte('fecha_inicio_mostrar', today()).gte('fecha_fin_mostrar', today()).maybeSingle(),
       db.from('otros_pagos').select('*').eq('activo', true),
-      db.from('otros_pagos_vecinos').select('pago_id').eq('vecino_id', v.id)
+      db.from('otros_pagos_vecinos').select('pago_id').eq('vecino_id', v.id),
+      db.from('deudas_anteriores').select('monto').eq('vecino_id', v.id).eq('pagado', false)
     ]);
-    const multaTotal = (faltas || []).reduce((s, f) => s + (MULTAS[f.eventos?.tipo] || 0), 0);
+    const multaFaltas = (faltas || []).reduce((s, f) => s + (MULTAS[f.eventos?.tipo] || 0), 0);
+    const multaDeudas = (deudasAnt || []).reduce((s, d) => s + parseFloat(d.monto), 0);
+    const multaTotal  = multaFaltas + multaDeudas;
     const guardadito = (guard  || []).reduce((s, a) => s + parseFloat(a.monto), 0);
     const pagadosIds = new Set((misPagosOtros || []).map(p => p.pago_id));
     const otrasPend  = (otrosPagos || []).filter(p => !pagadosIds.has(p.id));
