@@ -254,12 +254,14 @@ const AdminAsistencia = (() => {
     const { data: asists } = await db.from('asistencias').select('id').eq('evento_id', id);
     if (asists?.length) {
       const ids = asists.map(a => a.id);
-      await db.from('subsanaciones').delete().in('asistencia_id', ids);
-      await db.from('asistencias').delete().eq('evento_id', id);
+      const { error: errSub } = await db.from('subsanaciones').delete().in('asistencia_id', ids);
+      if (errSub) { hideLoading(); showToast('Error (subsanaciones): ' + errSub.message, 'err'); return; }
+      const { error: errAsis } = await db.from('asistencias').delete().eq('evento_id', id);
+      if (errAsis) { hideLoading(); showToast('Error (asistencias): ' + errAsis.message, 'err'); return; }
     }
     const { error: errDel } = await db.from('eventos').delete().eq('id', id);
     hideLoading();
-    if (errDel) { showToast('Error al eliminar: ' + errDel.message, 'err'); return; }
+    if (errDel) { showToast('Error (evento): ' + errDel.message, 'err'); return; }
     showToast('✓ Evento eliminado');
     render();
   }
