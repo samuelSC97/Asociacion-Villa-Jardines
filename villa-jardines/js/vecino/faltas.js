@@ -11,6 +11,7 @@ const VecinoFaltas = (() => {
     const presentes   = (asist||[]).filter(a=>a.estado==='P').length;
     const faltas      = (asist||[]).filter(a=>a.estado==='F');
     const subsanadas  = (asist||[]).filter(a=>a.estado==='J').length;
+    const exoneradas  = (asist||[]).filter(a=>a.estado==='E').length;
     const multaFaltas = faltas.reduce((s,a)=>s+(MULTAS[a.eventos?.tipo]||0),0);
     const multaDeudas = (deudasAnt||[]).reduce((s,d)=>s+parseFloat(d.monto),0);
     const multaTotal  = multaFaltas + multaDeudas;
@@ -20,6 +21,7 @@ const VecinoFaltas = (() => {
         <div class="metric"><div class="metric-val c-green">${presentes}</div><div class="metric-lbl">Presentes</div></div>
         <div class="metric"><div class="metric-val c-red">${faltas.length}</div><div class="metric-lbl">Faltas</div></div>
         <div class="metric"><div class="metric-val c-orange">${subsanadas}</div><div class="metric-lbl">Subsanadas</div></div>
+        ${exoneradas > 0 ? `<div class="metric"><div class="metric-val" style="color:var(--blue)">${exoneradas}</div><div class="metric-lbl">Exoneradas</div></div>` : ''}
       </div>
 
       ${multaTotal>0?`<div class="card" style="border-left:3px solid var(--red);background:var(--red-bg)">
@@ -55,10 +57,12 @@ const VecinoFaltas = (() => {
               </div>
               ${a.estado==='F'?`<div style="font-size:11px;color:var(--red);margin-top:3px;font-weight:500">⚠️ Falta sin subsanar — multa S/${multa}</div>`:''}
               ${a.estado==='J'&&sub?`<div class="hist-nota">✅ Subsanado el ${formatFecha(sub.fecha_subsanacion)}<br>📝 ${sub.nota||'Apoyo registrado'}</div>`:''}
+              ${a.estado==='E'?`<div style="font-size:11px;color:var(--blue);margin-top:3px">Exonerado de este evento</div>`:''}
             </div>
             <div style="text-align:right;flex-shrink:0">
               ${a.estado==='P'?`<span class="pill pill-green">Presente</span>`
                 :a.estado==='J'?`<span class="pill pill-orange">Subsanado</span>`
+                :a.estado==='E'?`<span class="pill pill-blue">Exonerado</span>`
                 :`<span class="pill pill-red">Falta</span>`}
             </div>
           </div>`;

@@ -91,15 +91,15 @@ const AdminAsistencia = (() => {
     document.getElementById('a-lista').innerHTML = fil.map(v => {
       const pagado    = _cuotaPagados.has(v.id);
       const amt       = _cuotaAmts[v.id] || 0;
-      const exonTotal = v.exonerado === 'total';
-      const exonAsam  = v.exonerado === 'asamblea' && _tipo === 'A';
+      const exonTotal  = v.exonerado === 'total';
+      const exonFaena  = (v.exonerado === 'faena' || v.exonerado === 'asamblea') && _tipo === 'F';
       const exonCuota = v.mz?.toUpperCase() === 'C' && (v.lote === 4 || v.lote === '4');
       const est       = _estados[v.id] || 'P';
       return `
       <div class="asist-item">
         <div style="flex:1;min-width:0">
           <div class="asist-name">${esc(v.nombre.split(',')[0].trim())}</div>
-          <div class="asist-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${exonTotal ? ' · Exonerado' : exonAsam ? ' · Exon.asam' : ''}</div>
+          <div class="asist-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${exonTotal ? ' · Exonerado' : exonFaena ? ' · Exon.faena' : ''}</div>
         </div>
         <div class="asist-controls">
           <button class="estado-toggle estado-${est}" onclick="AdminAsistencia.toggleEstado(${v.id})" id="est-${v.id}">${est==='F'?'Falta':'Presente'}</button>
@@ -175,7 +175,8 @@ const AdminAsistencia = (() => {
     if (error) { hideLoading(); showToast('Error: ' + error.message, 'err'); return; }
     const rows = _vecinos.map(v => {
       let estado = _estados[v.id] || 'P';
-      if (v.exonerado === 'total' || (v.exonerado === 'asamblea' && _tipo === 'A')) estado = 'P';
+      const esExon = v.exonerado === 'total' || ((v.exonerado === 'faena' || v.exonerado === 'asamblea') && _tipo === 'F');
+      if (esExon) estado = 'E';
       return { vecino_id: v.id, evento_id: ev.id, estado };
     });
     await db.from('asistencias').insert(rows);

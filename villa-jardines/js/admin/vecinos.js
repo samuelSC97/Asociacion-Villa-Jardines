@@ -32,7 +32,7 @@ const AdminVecinos = (() => {
             <div class="avatar">${initials(v.nombre)}</div>
             <div class="row-info">
               <div class="row-name">${esc(v.nombre)}</div>
-              <div class="row-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}${v.exonerado && v.exonerado !== 'no' ? ' · ' + (v.exonerado === 'total' ? 'Exonerado' : 'Exon. asambleas') : ''}</div>
+              <div class="row-sub">Mz ${esc(v.mz)}-${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}${v.exonerado && v.exonerado !== 'no' ? ' · ' + (v.exonerado === 'total' ? 'Exonerado' : 'Exon. faenas') : ''}</div>
             </div>
             ${nf > 0 ? `<span class="pill pill-red">${nf} falta${nf > 1 ? 's' : ''}</span>` : `<span class="pill pill-green">Sin faltas</span>`}
           </div>`;
@@ -70,7 +70,7 @@ const AdminVecinos = (() => {
         <div class="field"><label>Exoneración</label>
           <select id="nv-exonerado">
             <option value="no">Sin exoneración</option>
-            <option value="asamblea">Exonerado de asambleas</option>
+            <option value="faena">Exonerado de faenas</option>
             <option value="total">Exonerado total</option>
           </select>
         </div>
@@ -167,7 +167,7 @@ const AdminVecinos = (() => {
           <div>
             <div style="font-size:15px;font-weight:600">${esc(v.nombre)}</div>
             <div style="font-size:12px;color:var(--text2);margin-top:2px">Mz ${esc(v.mz)} — Lote ${esc(v.lote)}${v.cargo ? ' · ' + esc(v.cargo) : ''}</div>
-            ${v.exonerado !== 'no' ? `<span class="pill pill-green" style="margin-top:4px">${v.exonerado === 'total' ? 'Exonerado total' : 'Exonerado asambleas'}</span>` : ''}
+            ${v.exonerado !== 'no' ? `<span class="pill pill-green" style="margin-top:4px">${v.exonerado === 'total' ? 'Exonerado total' : 'Exonerado faenas'}</span>` : ''}
           </div>
         </div>
         <div class="grid-2">
@@ -177,8 +177,8 @@ const AdminVecinos = (() => {
         <div class="field"><label>Cargo</label><input type="text" id="ed-cargo" value="${esc(v.cargo || '')}" placeholder="Ninguno"></div>
         <div class="field"><label>Exoneración</label>
           <select id="ed-exonerado">
-            <option value="no" ${v.exonerado === 'no' || !v.exonerado ? 'selected' : ''}>Sin exoneración</option>
-            <option value="asamblea" ${v.exonerado === 'asamblea' ? 'selected' : ''}>Exonerado de asambleas</option>
+            <option value="no"    ${v.exonerado === 'no' || !v.exonerado ? 'selected' : ''}>Sin exoneración</option>
+            <option value="faena" ${(v.exonerado === 'faena' || v.exonerado === 'asamblea') ? 'selected' : ''}>Exonerado de faenas</option>
             <option value="total" ${v.exonerado === 'total' ? 'selected' : ''}>Exonerado total</option>
           </select>
         </div>
@@ -248,9 +248,13 @@ const AdminVecinos = (() => {
               <div class="hist-fecha">${formatFecha(a.eventos?.fecha)} · <span class="pill ${tipoColor(tipo)}" style="font-size:10px;padding:1px 6px">${tipoLabel(tipo)}</span></div>
               ${a.estado === 'J' && sub ? `<div class="hist-nota">✅ Subsanado ${formatFecha(sub.fecha_subsanacion)} — <em>${esc(sub.nota || 'Apoyo registrado')}</em></div>` : ''}
               ${a.estado === 'F' ? `<div style="font-size:11px;color:var(--red);margin-top:2px">⚠️ Multa pendiente: S/${MULTAS[tipo] || 0}</div>` : ''}
+              ${a.estado === 'E' ? `<div style="font-size:11px;color:var(--blue);margin-top:2px">Exonerado de este evento</div>` : ''}
             </div>
             <div id="aright-${a.id}" style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-              ${a.estado === 'P' ? `<span class="pill pill-green">Presente</span>` : a.estado === 'J' ? `<span class="pill pill-orange">Subsanado</span>` : `<span class="pill pill-red">Falta</span>`}
+              ${a.estado === 'P' ? `<span class="pill pill-green">Presente</span>`
+                : a.estado === 'J' ? `<span class="pill pill-orange">Subsanado</span>`
+                : a.estado === 'E' ? `<span class="pill pill-blue">Exonerado</span>`
+                : `<span class="pill pill-red">Falta</span>`}
               <button class="btn btn-sm btn-outline no-print" style="font-size:10px;padding:1px 7px" onclick="AdminVecinos.iniciarEdicion(${a.id},'${a.estado}',${id},${subId},${apoId})">Editar</button>
             </div>
           </div>`;
@@ -437,9 +441,20 @@ const AdminVecinos = (() => {
   }
 
   function iniciarEdicion(asistId, estadoActual, vecinoId, subId, apoId) {
-    _editandoAsist = { id: asistId, estado: estadoActual, vecinoId, subId: subId || null, apoId: apoId || null };
+    _editandoAsist = { id: asistId, estado: estadoActual, vecinoId, subId: subId || null, apoId: apoId || null, target: null };
     const rightEl = document.getElementById('aright-' + asistId);
     if (!rightEl) return;
+
+    if (estadoActual === 'E') {
+      rightEl.innerHTML = `
+        <div style="font-size:11px;color:var(--blue);font-weight:600;text-align:right;margin-bottom:4px">Exonerado</div>
+        <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap">
+          <button class="btn btn-sm btn-green" onclick="AdminVecinos.pedirConfirmEditTarget('P')">✓ Presente</button>
+          <button class="btn btn-sm btn-red"   onclick="AdminVecinos.pedirConfirmEditTarget('F')">✗ Falta</button>
+          <button class="btn btn-sm btn-outline" onclick="AdminVecinos.cancelarEdit()">Cancelar</button>
+        </div>`;
+      return;
+    }
 
     if (estadoActual === 'J') {
       rightEl.innerHTML = `
@@ -465,6 +480,16 @@ const AdminVecinos = (() => {
     }
   }
 
+  function pedirConfirmEditTarget(target) {
+    if (!_editandoAsist) return;
+    _editandoAsist.target = target;
+    const msgs = {
+      'P': 'Vas a corregir este registro a PRESENTE (se elimina la exoneración de este evento).',
+      'F': 'Vas a corregir este registro a FALTA. Se generará una multa pendiente para este vecino.'
+    };
+    Modal.pedir(msgs[target], ejecutarEdit);
+  }
+
   function cancelarEdit() {
     _editandoAsist = null;
     _renderDetalle(_detalle);
@@ -486,7 +511,12 @@ const AdminVecinos = (() => {
     _editandoAsist = null;
     showLoading();
 
-    if (estado === 'P') {
+    if (estado === 'E') {
+      const nuevoEstado = _editandoAsist?.target || 'P';
+      await db.from('asistencias').update({ estado: nuevoEstado }).eq('id', asistId);
+      hideLoading();
+      showToast(`✓ Registrado como ${nuevoEstado === 'P' ? 'presente' : 'falta'}`);
+    } else if (estado === 'P') {
       await db.from('asistencias').update({ estado: 'F' }).eq('id', asistId);
       hideLoading();
       showToast('✓ Registrado como falta');
@@ -550,5 +580,5 @@ const AdminVecinos = (() => {
   return { render, filtrar, ver, ir, volver, nuevoVecino, cancelarNuevo, guardarNuevo,
            verArchivados, reactivar, archivar, setApoyoTipo, updateApoyoTotal,
            guardarDatos, pagoLibre, registrarApoyo, agregarAcceso, toggleAcceso,
-           iniciarEdicion, cancelarEdit, pedirConfirmEdit, ejecutarEdit };
+           iniciarEdicion, cancelarEdit, pedirConfirmEdit, pedirConfirmEditTarget, ejecutarEdit };
 })();
