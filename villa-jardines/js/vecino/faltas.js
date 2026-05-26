@@ -5,15 +5,16 @@ const VecinoFaltas = (() => {
     const el = document.getElementById('vecino-body');
     const v  = Auth.getVecino();
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
-    const [{ data: asist }, { data: deudasAnt }] = await Promise.all([
+    const [{ data: asist }, { data: deudasAnt }, { data: guard }] = await Promise.all([
       db.from('asistencias').select('*,eventos(*),subsanaciones(*)').eq('vecino_id', v.id).order('created_at', { ascending: false }),
-      db.from('deudas_anteriores').select('*').eq('vecino_id', v.id).eq('pagado', false).order('anio', { ascending: true })
+      db.from('deudas_anteriores').select('*').eq('vecino_id', v.id).eq('pagado', false).order('anio', { ascending: true }),
+      db.from('apoyos').select('monto').eq('vecino_id', v.id).eq('estado', 'guardadito')
     ]);
-    _data = { asist: asist || [], deudasAnt: deudasAnt || [] };
+    const guardadito = (guard || []).reduce((s, a) => s + parseFloat(a.monto), 0);
+    _data = { asist: asist || [], deudasAnt: deudasAnt || [], guardadito };
 
     const presentes   = (asist||[]).filter(a=>a.estado==='P').length;
     const faltas      = (asist||[]).filter(a=>a.estado==='F');
-    const subsanadas  = (asist||[]).filter(a=>a.estado==='J').length;
     const exoneradas  = (asist||[]).filter(a=>a.estado==='E').length;
     const multaFaltas = faltas.reduce((s,a)=>s+(MULTAS[a.eventos?.tipo]||0),0);
     const multaDeudas = (deudasAnt||[]).reduce((s,d)=>s+parseFloat(d.monto),0);
@@ -23,7 +24,6 @@ const VecinoFaltas = (() => {
       <div class="metrics">
         <div class="metric"><div class="metric-val c-green">${presentes}</div><div class="metric-lbl">Presentes</div></div>
         <div class="metric"><div class="metric-val c-red">${faltas.length}</div><div class="metric-lbl">Faltas</div></div>
-        <div class="metric"><div class="metric-val c-orange">${subsanadas}</div><div class="metric-lbl">Subsanadas</div></div>
         ${exoneradas > 0 ? `<div class="metric"><div class="metric-val" style="color:var(--blue)">${exoneradas}</div><div class="metric-lbl">Exoneradas</div></div>` : ''}
       </div>
 
@@ -78,34 +78,25 @@ const VecinoFaltas = (() => {
   function exportar() {
     if (!_data) return;
     const v = Auth.getVecino();
-    const { asist, deudasAnt } = _data;
-    _generarPdf(v, asist, deudasAnt);
+    const { asist, deudasAnt, guardadito } = _data;
+    _generarPdf(v, asist, deudasAnt, guardadito);
   }
 
-  function _generarPdf(v, asist, deudasAnt) {
+  function _generarPdf(v, asist, deudasAnt, guardadito) {
     const faltas      = asist.filter(a => a.estado === 'F');
     const presentes   = asist.filter(a => a.estado === 'P').length;
-    const subsanadas  = asist.filter(a => a.estado === 'J').length;
     const exoneradas  = asist.filter(a => a.estado === 'E').length;
     const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
     const multaDeudas = deudasAnt.reduce((s, d) => s + parseFloat(d.monto), 0);
     const multaTotal  = multaFaltas + multaDeudas;
 
     const cfg = {
-      P: { label: 'Presente',  bg: '#dcfce7', fg: '#166534' },
-      F: { label: 'Falta',     bg: '#fee2e2', fg: '#b91c1c' },
-      J: { label: 'Subsanado', bg: '#fef9c3', fg: '#854d0e' },
-      E: { label: 'Exonerado', bg: '#ffedd5', fg: '#c2410c' }
+      P: { letra: 'A', bg: '#dcfce7', fg: '#166534' },
+      F: { letra: 'F', bg: '#fee2e2', fg: '#b91c1c' },
+      J: { letra: 'S', bg: '#dcfce7', fg: '#166534' },
+      E: { letra: 'E', bg: '#ffedd5', fg: '#c2410c' }
     };
-
-    const deudasHtml = deudasAnt.length ? `
-      <div class="sec-lbl">Deudas anteriores al sistema</div>
-      <table class="dt"><tbody>
-        ${deudasAnt.map(d => `<tr>
-          <td>${d.anio}${d.nota ? ' — ' + d.nota : ''}</td>
-          <td style="text-align:right;color:#b91c1c;font-weight:700">S/${parseFloat(d.monto).toFixed(2)}</td>
-        </tr>`).join('')}
-      </tbody></table>` : '';
+    const tipoNom = { A: 'Asamblea', F: 'Faena', I: 'Importante' };
 
     const byYear = {};
     asist.forEach(a => {
@@ -115,36 +106,66 @@ const VecinoFaltas = (() => {
     });
     Object.values(byYear).forEach(arr => arr.sort((a, b) => (a.eventos?.fecha || '').localeCompare(b.eventos?.fecha || '')));
 
-    const yearTables = Object.keys(byYear).sort().map(yr => {
+    const yearTables = Object.keys(byYear).sort().reverse().map(yr => {
       const evs = byYear[yr];
-      const faltasAnio = evs.filter(a => a.estado === 'F').length;
-      const multaAnio  = evs.filter(a => a.estado === 'F').reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+      const multaAnio = evs.filter(a => a.estado === 'F').reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+      const n = evs.length + 1;
+      const thPad = n > 10 ? '3px 3px' : n > 7 ? '4px 5px' : '5px 8px';
+      const edSz  = n > 10 ? '9px'  : n > 7 ? '10px' : '11px';
+      const enSz  = n > 10 ? '7px'  : '8px';
+      const tdSz  = n > 10 ? '11px' : '13px';
+      const tdPad = n > 10 ? '5px 3px' : '6px 8px';
       const heads = evs.map(a => {
         const f = a.eventos?.fecha || '';
         const dd = parseInt(f.slice(8, 10));
         const mm = parseInt(f.slice(5, 7));
-        const nom = a.eventos?.nombre || '';
-        const corto = nom.length > 22 ? nom.slice(0, 20) + '…' : nom;
-        return `<th><div class="ed">${dd} ${MESES[mm - 1] || ''}</div><div class="en">${corto}</div></th>`;
+        return `<th style="padding:${thPad}"><div class="ed" style="font-size:${edSz}">${dd} ${MESES[mm - 1] || ''}</div><div class="en" style="font-size:${enSz}">${tipoNom[a.eventos?.tipo] || ''}</div></th>`;
       }).join('');
       const cells = evs.map(a => {
-        const c = cfg[a.estado] || { label: a.estado, bg: '#f3f4f6', fg: '#374151' };
-        return `<td style="background:${c.bg};color:${c.fg};font-weight:700;text-align:center">${c.label}</td>`;
+        const c = cfg[a.estado] || { letra: a.estado, bg: '#f3f4f6', fg: '#374151' };
+        return `<td style="background:${c.bg};color:${c.fg};font-weight:700;text-align:center;font-size:${tdSz};padding:${tdPad}">${c.letra}</td>`;
       }).join('');
+      const subsanados = evs.filter(a => a.estado === 'J');
+      const subsDetalle = subsanados.length ? `
+        <div style="margin-top:5px;padding:5px 8px;background:#f0fdf4;border-left:3px solid #86efac;font-size:10px;color:#166534;line-height:1.7">
+          ${subsanados.map(a => {
+            const f = a.eventos?.fecha || '';
+            const dd = parseInt(f.slice(8, 10));
+            const mm = parseInt(f.slice(5, 7));
+            const nota = a.subsanaciones?.[0]?.nota || 'apoyo registrado';
+            return `✓ ${dd} ${MESES[mm-1]||''} — ${tipoNom[a.eventos?.tipo]||'Evento'}: ${nota}`;
+          }).join('<br>')}
+        </div>` : '';
       return `
         <div class="yr-block">
           <div class="yr-lbl">${yr}</div>
-          <div class="tw">
-            <table class="yt">
-              <thead><tr>${heads}<th class="tot">Total F</th><th class="tot">S/</th></tr></thead>
-              <tbody><tr>${cells}
-                <td class="tot" style="${faltasAnio > 0 ? 'color:#b91c1c;font-weight:700' : 'color:#6b7280'}">${faltasAnio || '—'}</td>
-                <td class="tot" style="${multaAnio > 0 ? 'color:#b91c1c;font-weight:700' : 'color:#6b7280'}">${multaAnio > 0 ? multaAnio : '—'}</td>
-              </tr></tbody>
-            </table>
-          </div>
+          <div class="tw"><table class="yt">
+            <thead><tr>${heads}<th class="tot" style="padding:${thPad};font-size:${edSz}">S/ año</th></tr></thead>
+            <tbody><tr>${cells}
+              <td class="tot" style="${multaAnio > 0 ? 'color:#b91c1c;font-weight:700' : 'color:#6b7280'};font-size:${tdSz};padding:${tdPad}">${multaAnio > 0 ? multaAnio : '—'}</td>
+            </tr></tbody>
+          </table></div>
+          ${subsDetalle}
         </div>`;
     }).join('');
+
+    const deudasBlock = deudasAnt.length ? `
+      <div class="yr-block">
+        <div class="yr-lbl" style="color:#991b1b;border-bottom-color:#991b1b">Deudas anteriores al sistema</div>
+        <div class="tw"><table class="yt">
+          <thead><tr><th style="text-align:left;min-width:160px;padding:5px 8px">Año / Descripción</th><th class="tot">S/</th></tr></thead>
+          <tbody>
+            ${deudasAnt.map(d => `<tr>
+              <td style="padding:5px 8px">${d.anio}${d.nota ? ' — ' + d.nota : ''}</td>
+              <td class="tot" style="color:#b91c1c;font-weight:700">${parseFloat(d.monto).toFixed(2)}</td>
+            </tr>`).join('')}
+          </tbody>
+          ${deudasAnt.length > 1 ? `<tfoot><tr>
+            <td style="text-align:right;font-weight:700;background:#fef2f2;padding:5px 8px">Total:</td>
+            <td class="tot" style="color:#b91c1c;font-weight:700;background:#fef2f2">${multaDeudas.toFixed(2)}</td>
+          </tr></tfoot>` : ''}
+        </table></div>
+      </div>` : '';
 
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <title>Historial — ${v.nombre}</title>
@@ -154,20 +175,18 @@ body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#111}
 .aso{font-size:15px;font-weight:700;margin-bottom:2px}
 .cab{font-size:11px;color:#555;margin-bottom:14px}
 .inf p{margin-bottom:3px}.inf{margin-bottom:14px}
-.res{display:flex;gap:22px;margin-bottom:18px;padding:10px 14px;background:#f4f4f4;border-radius:6px;flex-wrap:wrap}
+.res{display:flex;gap:16px;margin-bottom:18px;padding:10px 14px;background:#f4f4f4;border-radius:6px;flex-wrap:wrap}
 .rv{font-size:18px;font-weight:700}.rl{font-size:10px;color:#666}
-.sec-lbl{font-size:12px;font-weight:700;margin:16px 0 5px;color:#333;border-bottom:1px solid #e5e7eb;padding-bottom:3px}
-.dt{border-collapse:collapse;width:auto;margin-bottom:4px}
-.dt td{padding:3px 10px 3px 0;font-size:11px;border:none}
-.yr-block{margin-bottom:22px}
+.yr-block{margin-bottom:20px;break-inside:avoid;page-break-inside:avoid}
 .yr-lbl{font-size:13px;font-weight:700;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:3px;margin-bottom:6px}
 .tw{overflow-x:auto}
-.yt{border-collapse:collapse;white-space:nowrap}
-.yt th,.yt td{border:1px solid #d1d5db;padding:5px 8px;font-size:11px}
-.yt thead th{background:#f0f4f8;text-align:center;font-weight:600}
-.ed{font-weight:700;font-size:12px;text-align:center}
-.en{font-size:9px;color:#555;margin-top:1px;text-align:center;max-width:90px;overflow:hidden;text-overflow:ellipsis}
-.tot{background:#f0f0f0;font-weight:700;text-align:center;min-width:44px}
+.yt{border-collapse:collapse;table-layout:fixed;width:100%}
+.yt th,.yt td{border:1px solid #bfdbfe;overflow:hidden}
+.yt thead th{background:#dbeafe;color:#1e3a8a;text-align:center;font-weight:600}
+.ed{font-weight:700;text-align:center}
+.en{color:#1e40af;margin-top:2px;text-align:center;word-break:break-word}
+.tot{background:#f0f0f0;font-weight:700;text-align:center;width:48px;border-color:#d1d5db!important}
+tfoot td{background:#f9fafb}
 @media print{body{padding:8px}.tw{overflow:visible}}
 </style></head><body>
 <div class="aso">Asociación de Vecinos Villa Jardines</div>
@@ -178,13 +197,13 @@ body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#111}
 </div>
 <div class="res">
   <div><div class="rv" style="color:#b91c1c">S/${multaTotal.toFixed(2)}</div><div class="rl">Deuda total</div></div>
+  ${guardadito > 0 ? `<div><div class="rv" style="color:#b45309">S/${guardadito.toFixed(2)}</div><div class="rl">Guardadito ↑</div></div>` : ''}
   <div><div class="rv" style="color:#166534">${presentes}</div><div class="rl">Presentes</div></div>
   <div><div class="rv" style="color:#b91c1c">${faltas.length}</div><div class="rl">Faltas</div></div>
-  <div><div class="rv" style="color:#854d0e">${subsanadas}</div><div class="rl">Subsanadas</div></div>
   ${exoneradas > 0 ? `<div><div class="rv" style="color:#c2410c">${exoneradas}</div><div class="rl">Exoneradas</div></div>` : ''}
 </div>
-${deudasHtml}
 ${yearTables || '<div style="color:#6b7280;padding:12px 0">Sin registros de asistencia.</div>'}
+${deudasBlock}
 </body></html>`;
     const w = window.open('', '_blank', 'width=820,height=720');
     if (w) { w.document.write(html); w.document.close(); w.print(); }
