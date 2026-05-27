@@ -153,7 +153,7 @@ const AdminVecinos = (() => {
     const multaDeudas = (deudasAnt || []).reduce((s, d) => s + parseFloat(d.monto), 0);
     const multaTotal  = multaFaltas + multaDeudas;
     const guardadito  = (apoyos || []).filter(a => a.estado === 'guardadito').reduce((s, a) => s + parseFloat(a.monto), 0);
-    const apoyosHist = (apoyos || []).filter(a => a.estado !== 'guardadito');
+    const apoyosHist = apoyos || [];
 
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -266,11 +266,14 @@ const AdminVecinos = (() => {
       <div class="sec-title">Pagos y apoyos registrados</div>
       <div class="card card-flush">
         ${apoyosHist.map(a => `<div class="pago-det-row">
-          <div>
+          <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:500">${esc(a.motivo || a.estado)}</div>
-            <div style="font-size:11px;color:var(--text2)">${formatFecha(a.fecha)}</div>
+            <div style="font-size:11px;color:var(--text2)">${formatFecha(a.fecha)} &nbsp;·&nbsp; <span class="${a.estado === 'aplicado' ? 'pill pill-green' : 'pill pill-gold'}" style="font-size:10px">${a.estado === 'aplicado' ? 'Aplicado' : 'Guardadito'}</span></div>
           </div>
-          <span class="pill pill-green">S/${a.monto}</span>
+          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+            <span class="pill ${a.estado === 'aplicado' ? 'pill-green' : 'pill-gold'}">S/${a.monto}</span>
+            <button class="btn btn-sm" style="padding:2px 8px;font-size:11px;background:var(--red-bg);color:var(--red);border:1px solid var(--red)" onclick="AdminVecinos.eliminarApoyo(${a.id},${id},'${a.estado}')">🗑</button>
+          </div>
         </div>`).join('')}
       </div>` : ''}
 
@@ -307,6 +310,29 @@ const AdminVecinos = (() => {
         </div>
         <button class="btn btn-dark btn-sm" onclick="AdminVecinos.agregarAcceso(${id})">＋ Agregar acceso</button>
       </div>`;
+  }
+
+  function eliminarApoyo(apoyoId, vecinoId, estado) {
+    const msg = estado === 'aplicado'
+      ? 'Eliminar este apoyo revertirá la falta como pendiente (F) y borrará la subsanación.'
+      : 'Eliminar este guardadito borrará el saldo a favor.';
+    Modal.pedir(msg, async () => {
+      showLoading();
+      if (estado === 'aplicado') {
+        const { data: sub } = await db.from('subsanaciones').select('id,asistencia_id').eq('apoyo_id', apoyoId).maybeSingle();
+        if (sub) {
+          const { error: errA } = await db.from('asistencias').update({ estado: 'F' }).eq('id', sub.asistencia_id);
+          if (errA) { hideLoading(); showToast('Error al revertir asistencia: ' + errA.message, 'err'); return; }
+          const { error: errS } = await db.from('subsanaciones').delete().eq('id', sub.id);
+          if (errS) { hideLoading(); showToast('Error al eliminar subsanación: ' + errS.message, 'err'); return; }
+        }
+      }
+      const { error: errAp } = await db.from('apoyos').delete().eq('id', apoyoId);
+      hideLoading();
+      if (errAp) { showToast('Error al eliminar apoyo: ' + errAp.message, 'err'); return; }
+      showToast('✓ Apoyo eliminado' + (estado === 'aplicado' ? ' — falta revertida' : ''));
+      _renderDetalle(vecinoId);
+    });
   }
 
   function volver()     { _detalle = null; render(); }
@@ -716,7 +742,7 @@ ${deudasBlock}
 
   return { render, filtrar, ver, ir, volver, nuevoVecino, cancelarNuevo, guardarNuevo,
            verArchivados, reactivar, archivar, setApoyoTipo, updateApoyoTotal,
-           guardarDatos, pagoLibre, registrarApoyo, agregarAcceso, toggleAcceso,
+           guardarDatos, pagoLibre, registrarApoyo, eliminarApoyo, agregarAcceso, toggleAcceso,
            iniciarEdicion, cancelarEdit, pedirConfirmEdit, pedirConfirmEditTarget, ejecutarEdit,
            exportar };
 })();
