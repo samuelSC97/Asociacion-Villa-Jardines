@@ -162,9 +162,10 @@ input[type="checkbox"] { width: auto; margin: 0; }
 /* ── MESES GRID ── */
 .mes-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .mes-cell { aspect-ratio: 1; border-radius: var(--r-xs); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; text-transform: uppercase; cursor: default; }
-.mes-ok  { background: var(--green-bg); color: var(--green); }
-.mes-no  { background: var(--red-bg);   color: var(--red); }
-.mes-fut { background: var(--bg2);      color: var(--text3); }
+.mes-ok       { background: var(--green-bg); color: var(--green); }
+.mes-no       { background: var(--red-bg);   color: var(--red); }
+.mes-fut      { background: var(--bg2);      color: var(--text3); }
+.mes-adelanto { background: var(--blue-bg);  color: var(--blue); }
 
 /* ── HIST ROW ── */
 .hist-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--bg2); gap: 8px; }

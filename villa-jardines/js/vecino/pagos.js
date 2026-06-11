@@ -1,5 +1,5 @@
 const VecinoPagos = (() => {
-  const ANO_MIN_ALMACEN = 2026;
+  const ANO_MIN_ALMACEN = 2025;
   const ANO_MIN_CUOTAS  = 2016;
   let _anioAlmacen  = new Date().getFullYear();
   let _anioCuotas   = new Date().getFullYear();
@@ -40,28 +40,54 @@ const VecinoPagos = (() => {
     const mesActual = new Date().getMonth() + 1;
     const pagMesAnio = _pagMesAll.filter(p => p.anio === anio);
 
+    // Detect furthest future paid month (adelanto)
+    const futurePaid = _pagMesAll.filter(p =>
+      p.anio > yearNow || (p.anio === yearNow && p.mes > mesActual)
+    );
+    let advUntilMo = null, advUntilYr = null;
+    if (futurePaid.length > 0) {
+      futurePaid.sort((a, b) => a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes);
+      const last = futurePaid[futurePaid.length - 1];
+      advUntilMo = last.mes; advUntilYr = last.anio;
+    }
+
     el.innerHTML = `
       <div class="year-nav">
         <button onclick="VecinoPagos.anioAlmacen(-1)" ${anio <= ANO_MIN_ALMACEN ? 'disabled' : ''}>‹</button>
         <span>Almacén (S/2 mensual) — ${anio}</span>
         <button onclick="VecinoPagos.anioAlmacen(1)" ${anio >= yearNow ? 'disabled' : ''}>›</button>
       </div>
+      ${advUntilMo ? `<div style="font-size:11px;color:var(--blue);background:var(--blue-bg);padding:6px 10px;border-radius:var(--r-sm);margin-bottom:8px;font-weight:500">✓ Pagado por adelanto hasta ${MESES_L[advUntilMo-1]} ${advUntilYr}</div>` : ''}
       <div class="card">
-        <div style="display:flex;gap:10px;font-size:11px;color:var(--text2);margin-bottom:8px">
+        <div style="display:flex;gap:10px;font-size:11px;color:var(--text2);margin-bottom:8px;flex-wrap:wrap">
           <span><span style="background:var(--green-bg);color:var(--green);padding:1px 6px;border-radius:3px;font-weight:700">■</span> Pagado</span>
+          <span><span style="background:var(--blue-bg);color:var(--blue);padding:1px 6px;border-radius:3px;font-weight:700">■</span> Adelanto</span>
           <span><span style="background:var(--red-bg);color:var(--red);padding:1px 6px;border-radius:3px;font-weight:700">■</span> Pendiente</span>
-          <span><span style="background:var(--bg2);padding:1px 6px;border-radius:3px">■</span> Futuro</span>
+          <span><span style="background:var(--bg2);padding:1px 6px;border-radius:3px">■</span> N/A</span>
         </div>
         <div class="mes-grid">
           ${MESES.map((m, i) => {
             const mes = i + 1;
             const pag = pagMesAnio.find(p => p.mes === mes);
-            const fut = mes > mesActual && anio === yearNow;
-            return `<div class="mes-cell ${fut?'mes-fut':pag?'mes-ok':'mes-no'}" title="${pag?'Pagado S/'+pag.monto+' — '+formatFecha(pag.fecha_pago):fut?'Aún no corresponde':'Pendiente'}">${m}</div>`;
+            const beforeStart = (anio === 2025 && mes < 2) || anio < 2025;
+            const isInFuture  = anio > yearNow || (anio === yearNow && mes > mesActual);
+            const cls   = beforeStart ? 'mes-fut'
+              : pag ? (isInFuture ? 'mes-adelanto' : 'mes-ok')
+              : isInFuture ? 'mes-fut' : 'mes-no';
+            const ttip  = beforeStart ? 'Sin cobro'
+              : pag ? (isInFuture ? `Adelanto S/${pag.monto} — ${formatFecha(pag.fecha_pago)}` : `Pagado S/${pag.monto} — ${formatFecha(pag.fecha_pago)}`)
+              : isInFuture ? 'Aún no corresponde' : 'Pendiente';
+            return `<div class="mes-cell ${cls}" title="${ttip}">${m}</div>`;
           }).join('')}
         </div>
         ${pagMesAnio.length ? `<div style="margin-top:10px;border-top:1px solid var(--bg2);padding-top:10px">
-          ${pagMesAnio.map(p => `<div class="pago-det-row"><div>${MESES_L[p.mes-1]} ${p.anio}${p.nota?' · <span style="color:var(--text2)">'+p.nota+'</span>':''}</div><span class="pill pill-green">S/${p.monto}</span></div>`).join('')}
+          ${pagMesAnio.map(p => {
+            const isFut = p.anio > yearNow || (p.anio === yearNow && p.mes > mesActual);
+            return `<div class="pago-det-row">
+              <div>${MESES_L[p.mes-1]} ${p.anio}${isFut ? ' <span style="font-size:10px;color:var(--blue)">(adelanto)</span>' : ''}${p.nota ? ' · <span style="color:var(--text2)">' + esc(p.nota) + '</span>' : ''}</div>
+              <span class="pill ${isFut ? 'pill-blue' : 'pill-green'}">S/${p.monto}</span>
+            </div>`;
+          }).join('')}
         </div>` : ''}
       </div>`;
   }
@@ -88,7 +114,7 @@ const VecinoPagos = (() => {
         <div class="progress"><div class="progress-fill p-blue" style="width:${Math.min(100,cuotaSocPag/24*100)}%"></div></div>
         ${cuotaSocPag<24?`<div style="font-size:11px;color:var(--text2);margin-top:5px">Falta S/${24-cuotaSocPag} — puedes pagar en partes</div>`:`<div style="font-size:11px;color:var(--green);margin-top:5px">✓ Cuota social completa ${anio}</div>`}
         ${cuotasAnio.length?`<div style="margin-top:10px;border-top:1px solid var(--bg2);padding-top:10px">
-          ${cuotasAnio.map(c=>`<div class="pago-det-row"><div>${formatFecha(c.fecha_pago)}${c.nota?' · <span style="color:var(--text2)">'+c.nota+'</span>':''}</div><span class="pill pill-blue">S/${c.monto}</span></div>`).join('')}
+          ${cuotasAnio.map(c=>`<div class="pago-det-row"><div>${formatFecha(c.fecha_pago)}${c.nota?' · <span style="color:var(--text2)">'+esc(c.nota)+'</span>':''}</div><span class="pill pill-blue">S/${c.monto}</span></div>`).join('')}
         </div>`:''}
       </div>`;
   }

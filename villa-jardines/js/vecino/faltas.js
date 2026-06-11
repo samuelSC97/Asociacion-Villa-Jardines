@@ -1,23 +1,36 @@
 const VecinoFaltas = (() => {
   let _data = null;
 
+  function _isVirtualFalta(a, pagMesSet) {
+    if (a.estado !== 'P') return false;
+    const fecha = a.eventos?.fecha || '';
+    if (!fecha) return false;
+    const yr = parseInt(fecha.slice(0, 4));
+    const mo = parseInt(fecha.slice(5, 7));
+    if (yr < 2025 || (yr === 2025 && mo < 2)) return false;
+    return !pagMesSet.has(`${yr}-${mo}`);
+  }
+
   async function render() {
     const el = document.getElementById('vecino-body');
     const v  = Auth.getVecino();
     el.innerHTML = '<div class="loading-inline">Cargando...</div>';
-    const [{ data: asist }, { data: deudasAnt }, { data: guard }] = await Promise.all([
+    const [{ data: asist }, { data: deudasAnt }, { data: guard }, { data: pagMes }] = await Promise.all([
       db.from('asistencias').select('*,eventos(*),subsanaciones(*)').eq('vecino_id', v.id).order('created_at', { ascending: false }),
       db.from('deudas_anteriores').select('*').eq('vecino_id', v.id).eq('pagado', false).order('anio', { ascending: true }),
-      db.from('apoyos').select('monto').eq('vecino_id', v.id).eq('estado', 'guardadito')
+      db.from('apoyos').select('monto').eq('vecino_id', v.id).eq('estado', 'guardadito'),
+      db.from('pagos_cuota_mes').select('anio,mes').eq('vecino_id', v.id)
     ]);
     const guardadito = (guard || []).reduce((s, a) => s + parseFloat(a.monto), 0);
-    _data = { asist: asist || [], deudasAnt: deudasAnt || [], guardadito };
+    const pagMesSet  = new Set((pagMes || []).map(p => `${p.anio}-${p.mes}`));
+    _data = { asist: asist || [], deudasAnt: deudasAnt || [], guardadito, pagMesSet };
 
-    const presentes   = (asist||[]).filter(a=>a.estado==='P').length;
-    const faltas      = (asist||[]).filter(a=>a.estado==='F');
-    const exoneradas  = (asist||[]).filter(a=>a.estado==='E').length;
-    const multaFaltas = faltas.reduce((s,a)=>s+(MULTAS[a.eventos?.tipo]||0),0);
-    const multaDeudas = (deudasAnt||[]).reduce((s,d)=>s+parseFloat(d.monto),0);
+    const asistData   = asist || [];
+    const presentes   = asistData.filter(a => a.estado === 'P' && !_isVirtualFalta(a, pagMesSet)).length;
+    const faltas      = asistData.filter(a => a.estado === 'F' || _isVirtualFalta(a, pagMesSet));
+    const exoneradas  = asistData.filter(a => a.estado === 'E').length;
+    const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+    const multaDeudas = (deudasAnt || []).reduce((s, d) => s + parseFloat(d.monto), 0);
     const multaTotal  = multaFaltas + multaDeudas;
 
     el.innerHTML = `
@@ -27,64 +40,79 @@ const VecinoFaltas = (() => {
         ${exoneradas > 0 ? `<div class="metric"><div class="metric-val" style="color:var(--blue)">${exoneradas}</div><div class="metric-lbl">Exoneradas</div></div>` : ''}
       </div>
 
-      ${multaTotal>0?`<div class="card" style="border-left:3px solid var(--red);background:var(--red-bg)">
-        <div style="font-weight:600;color:var(--red)">Deuda total pendiente: S/${multaTotal}</div>
-        ${multaDeudas>0&&multaFaltas>0?`<div style="font-size:12px;color:var(--red);margin-top:2px">Faltas S/${multaFaltas} · Deudas anteriores S/${multaDeudas}</div>`:''}
-        <div style="font-size:12px;color:var(--red);margin-top:3px">${faltas.length>0?`${faltas.length} falta${faltas.length>1?'s':''} sin subsanar · `:''}Acércate al presidente para ponerte al día.</div>
-      </div>`:'<div class="card" style="border-left:3px solid var(--green);background:var(--green-bg)"><div style="font-weight:600;color:var(--green)">✓ Sin deudas pendientes</div></div>'}
+      ${multaTotal > 0
+        ? `<div class="card" style="border-left:3px solid var(--red);background:var(--red-bg)">
+            <div style="font-weight:600;color:var(--red)">Deuda total pendiente: S/${multaTotal}</div>
+            ${multaDeudas > 0 && multaFaltas > 0 ? `<div style="font-size:12px;color:var(--red);margin-top:2px">Faltas S/${multaFaltas} · Deudas anteriores S/${multaDeudas}</div>` : ''}
+            <div style="font-size:12px;color:var(--red);margin-top:3px">${faltas.length > 0 ? `${faltas.length} falta${faltas.length > 1 ? 's' : ''} sin subsanar · ` : ''}Acércate al presidente para ponerte al día.</div>
+          </div>`
+        : '<div class="card" style="border-left:3px solid var(--green);background:var(--green-bg)"><div style="font-weight:600;color:var(--green)">✓ Sin deudas pendientes</div></div>'}
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 7px">
         <div class="sec-title" style="margin:0">Historial de asistencia</div>
         <button class="btn btn-sm btn-outline" onclick="VecinoFaltas.exportar()">🖨️ Exportar PDF</button>
       </div>
       <div class="card card-flush">
-        ${(deudasAnt||[]).map(d=>`
+        ${(deudasAnt || []).map(d => `
           <div class="hist-row">
             <div class="hist-left">
-              <div class="hist-evento" style="color:var(--red);font-weight:600">Deuda acumulada ${d.anio}${d.nota?' — '+esc(d.nota):''}</div>
+              <div class="hist-evento" style="color:var(--red);font-weight:600">Deuda acumulada ${d.anio}${d.nota ? ' — ' + esc(d.nota) : ''}</div>
               <div class="hist-fecha" style="color:var(--text2)">Pendiente de pago · anterior al sistema</div>
             </div>
             <div style="flex-shrink:0"><span class="pill pill-red">S/${d.monto}</span></div>
           </div>`).join('')}
-        ${(asist||[]).length?(asist||[]).map(a=>{
-          const sub  = a.subsanaciones?.[0];
-          const tipo = a.eventos?.tipo;
-          const multa = MULTAS[tipo]||0;
-          return `<div class="hist-row">
-            <div class="hist-left">
-              <div class="hist-evento" style="font-weight:600">${a.eventos?.nombre||'Evento'}</div>
-              <div class="hist-fecha">
-                📅 ${formatFecha(a.eventos?.fecha)}
-                &nbsp;·&nbsp;
-                <span class="pill ${tipoColor(tipo)}" style="font-size:10px;padding:1px 6px">${tipoLabel(tipo)}</span>
-                &nbsp;·&nbsp;
-                <span style="font-family:var(--mono);font-size:11px">S/${multa}</span>
-              </div>
-              ${a.estado==='F'?`<div style="font-size:11px;color:var(--red);margin-top:3px;font-weight:500">⚠️ Falta sin subsanar — multa S/${multa}</div>`:''}
-              ${a.estado==='J'&&sub?`<div class="hist-nota">✅ Subsanado el ${formatFecha(sub.fecha_subsanacion)}<br>📝 ${sub.nota||'Apoyo registrado'}</div>`:''}
-              ${a.estado==='E'?`<div style="font-size:11px;color:var(--blue);margin-top:3px">Exonerado de este evento</div>`:''}
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              ${a.estado==='P'?`<span class="pill pill-green">Presente</span>`
-                :a.estado==='J'?`<span class="pill pill-orange">Subsanado</span>`
-                :a.estado==='E'?`<span class="pill pill-blue">Exonerado</span>`
-                :`<span class="pill pill-red">Falta</span>`}
-            </div>
-          </div>`;
-        }).join(''):(!(deudasAnt||[]).length?'<div style="color:var(--text2);font-size:13px;padding:14px 0">Sin registros de asistencia aún.</div>':'')}
+        ${asistData.length
+          ? asistData.map(a => {
+              const sub    = a.subsanaciones?.[0];
+              const tipo   = a.eventos?.tipo;
+              const multa  = MULTAS[tipo] || 0;
+              const vfalta = _isVirtualFalta(a, pagMesSet);
+              const esFalta = a.estado === 'F' || vfalta;
+              const fecha  = a.eventos?.fecha || '';
+              const yr     = fecha.slice(0, 4);
+              const mo     = parseInt(fecha.slice(5, 7));
+              const mesNom = MESES_L[mo - 1] || '';
+              return `<div class="hist-row">
+                <div class="hist-left">
+                  <div class="hist-evento" style="font-weight:600">${a.eventos?.nombre || 'Evento'}</div>
+                  <div class="hist-fecha">
+                    📅 ${formatFecha(fecha)}
+                    &nbsp;·&nbsp;
+                    <span class="pill ${tipoColor(tipo)}" style="font-size:10px;padding:1px 6px">${tipoLabel(tipo)}</span>
+                    &nbsp;·&nbsp;
+                    <span style="font-family:var(--mono);font-size:11px">S/${multa}</span>
+                  </div>
+                  ${esFalta && !vfalta ? `<div style="font-size:11px;color:var(--red);margin-top:3px;font-weight:500">⚠️ Falta sin subsanar — multa S/${multa}</div>` : ''}
+                  ${vfalta ? `<div style="font-size:11px;color:var(--red);margin-top:3px;font-weight:500">⚠️ No se consideró — falta de pago de almacén S/2 (${mesNom} ${yr}) · multa S/${multa}</div>` : ''}
+                  ${a.estado === 'J' && sub ? `<div class="hist-nota">✅ Subsanado el ${formatFecha(sub.fecha_subsanacion)}<br>📝 ${sub.nota || 'Apoyo registrado'}</div>` : ''}
+                  ${a.estado === 'E' ? `<div style="font-size:11px;color:var(--blue);margin-top:3px">Exonerado de este evento</div>` : ''}
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  ${esFalta
+                    ? `<span class="pill pill-red">Falta</span>`
+                    : a.estado === 'J'
+                      ? `<span class="pill pill-orange">Subsanado</span>`
+                      : a.estado === 'E'
+                        ? `<span class="pill pill-blue">Exonerado</span>`
+                        : `<span class="pill pill-green">Presente</span>`}
+                </div>
+              </div>`;
+            }).join('')
+          : (!(deudasAnt || []).length ? '<div style="color:var(--text2);font-size:13px;padding:14px 0">Sin registros de asistencia aún.</div>' : '')}
       </div>`;
   }
 
   function exportar() {
     if (!_data) return;
     const v = Auth.getVecino();
-    const { asist, deudasAnt, guardadito } = _data;
-    _generarPdf(v, asist, deudasAnt, guardadito);
+    const { asist, deudasAnt, guardadito, pagMesSet } = _data;
+    _generarPdf(v, asist, deudasAnt, guardadito, pagMesSet);
   }
 
-  function _generarPdf(v, asist, deudasAnt, guardadito) {
-    const faltas      = asist.filter(a => a.estado === 'F');
-    const presentes   = asist.filter(a => a.estado === 'P').length;
+  function _generarPdf(v, asist, deudasAnt, guardadito, pagMesSet) {
+    const vFn         = a => _isVirtualFalta(a, pagMesSet);
+    const faltas      = asist.filter(a => a.estado === 'F' || vFn(a));
+    const presentes   = asist.filter(a => a.estado === 'P' && !vFn(a)).length;
     const exoneradas  = asist.filter(a => a.estado === 'E').length;
     const multaFaltas = faltas.reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
     const multaDeudas = deudasAnt.reduce((s, d) => s + parseFloat(d.monto), 0);
@@ -108,7 +136,7 @@ const VecinoFaltas = (() => {
 
     const yearTables = Object.keys(byYear).sort().reverse().map(yr => {
       const evs = byYear[yr];
-      const multaAnio = evs.filter(a => a.estado === 'F').reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
+      const multaAnio = evs.filter(a => a.estado === 'F' || vFn(a)).reduce((s, a) => s + (MULTAS[a.eventos?.tipo] || 0), 0);
       const n = evs.length + 1;
       const thPad = n > 10 ? '3px 3px' : n > 7 ? '4px 5px' : '5px 8px';
       const edSz  = n > 10 ? '9px'  : n > 7 ? '10px' : '11px';
@@ -116,24 +144,36 @@ const VecinoFaltas = (() => {
       const tdSz  = n > 10 ? '11px' : '13px';
       const tdPad = n > 10 ? '5px 3px' : '6px 8px';
       const heads = evs.map(a => {
-        const f = a.eventos?.fecha || '';
+        const f  = a.eventos?.fecha || '';
         const dd = parseInt(f.slice(8, 10));
         const mm = parseInt(f.slice(5, 7));
         return `<th style="padding:${thPad}"><div class="ed" style="font-size:${edSz}">${dd} ${MESES[mm - 1] || ''}</div><div class="en" style="font-size:${enSz}">${tipoNom[a.eventos?.tipo] || ''}</div></th>`;
       }).join('');
       const cells = evs.map(a => {
-        const c = cfg[a.estado] || { letra: a.estado, bg: '#f3f4f6', fg: '#374151' };
+        const vf = vFn(a);
+        const c  = vf ? { letra: 'F', bg: '#fee2e2', fg: '#b91c1c' } : (cfg[a.estado] || { letra: a.estado, bg: '#f3f4f6', fg: '#374151' });
         return `<td style="background:${c.bg};color:${c.fg};font-weight:700;text-align:center;font-size:${tdSz};padding:${tdPad}">${c.letra}</td>`;
       }).join('');
       const subsanados = evs.filter(a => a.estado === 'J');
+      const virtFaltas = evs.filter(vFn);
       const subsDetalle = subsanados.length ? `
         <div style="margin-top:5px;padding:5px 8px;background:#f0fdf4;border-left:3px solid #86efac;font-size:10px;color:#166534;line-height:1.7">
           ${subsanados.map(a => {
-            const f = a.eventos?.fecha || '';
+            const f  = a.eventos?.fecha || '';
             const dd = parseInt(f.slice(8, 10));
             const mm = parseInt(f.slice(5, 7));
             const nota = a.subsanaciones?.[0]?.nota || 'apoyo registrado';
-            return `✓ ${dd} ${MESES[mm-1]||''} — ${tipoNom[a.eventos?.tipo]||'Evento'}: ${nota}`;
+            return `✓ ${dd} ${MESES[mm - 1] || ''} — ${tipoNom[a.eventos?.tipo] || 'Evento'}: ${nota}`;
+          }).join('<br>')}
+        </div>` : '';
+      const virtDetalle = virtFaltas.length ? `
+        <div style="margin-top:5px;padding:5px 8px;background:#fff7ed;border-left:3px solid #fca5a5;font-size:10px;color:#9a3412;line-height:1.7">
+          <strong>Observación — pago de almacén S/2:</strong><br>
+          ${virtFaltas.map(a => {
+            const f  = a.eventos?.fecha || '';
+            const dd = parseInt(f.slice(8, 10));
+            const mm = parseInt(f.slice(5, 7));
+            return `⚠ ${dd} ${MESES[mm - 1] || ''} (${tipoNom[a.eventos?.tipo] || ''}) — No considerado por pago pendiente de almacén S/2 (${MESES_L[mm - 1] || ''} ${f.slice(0, 4)})`;
           }).join('<br>')}
         </div>` : '';
       return `
@@ -146,6 +186,7 @@ const VecinoFaltas = (() => {
             </tr></tbody>
           </table></div>
           ${subsDetalle}
+          ${virtDetalle}
         </div>`;
     }).join('');
 
